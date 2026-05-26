@@ -1,34 +1,57 @@
 # Family DEFCON
 
-Family DEFCON is a Home Assistant custom integration for a family WiFi timeout and escalation simulator.
+Family DEFCON is a Home Assistant custom integration that creates a family WiFi timeout and escalation system with a DEFCON style command interface.
 
-It supports:
+It is designed for families that want a playful, visible consequence system for arguments, retaliation, and repeated conflicts. It can connect to AdGuard Home and pause internet access for configured people using AdGuard custom filtering rules.
 
-- PIN mode so any person can use any terminal
-- Shared ESPHome or dashboard terminals
-- Config driven people, stations, PINs, targets, AdGuard URL, and AdGuard clients
-- Optional Parent 1 and Parent 2 target protection
-- DEFCON level, peace status, daily launches, conflict chain, and event log sensors
-- AdGuard Home custom filtering rules for DNS based internet pause
-- Mutual WiFi Destruction rules
+## Features
 
-## HACS install
+Family DEFCON supports:
 
-1. In Home Assistant, open **HACS**.
-2. Go to **Integrations**.
-3. Open the three dot menu.
-4. Choose **Custom repositories**.
-5. Add this repository URL:
+- PIN based launch authentication
+- Any person can use any configured station or dashboard terminal
+- Config driven people, targets, PINs, stations, penalties, and AdGuard clients
+- Optional parent target protection
+- DEFCON level and peace status sensors
+- Daily launch counter
+- Conflict chain tracking
+- Per person WiFi status and minutes remaining sensors
+- Mutual WiFi Destruction escalation
+- Daily automatic reset
+- AdGuard Home custom filtering rule enforcement
+- Built in dashboard launch entities
+- Config driven dashboard people/status sensor
+- Example Lovelace dashboard cards
+- ESPHome starter example
+
+## How the game works
+
+Default rules:
+
+1. A first strike gives the target a 30 minute internet timeout.
+2. If the target retaliates, the retaliator gets an added 15 minute penalty and the other person gets 30 minutes.
+3. If the other person attacks back, the attacker gets an added 15 minute penalty and the target gets 45 minutes.
+4. If the next retaliation happens, Mutual WiFi Destruction activates.
+5. Five total strikes in one day also activates Mutual WiFi Destruction.
+
+These values are configurable in `family_defcon.yaml`.
+
+## HACS installation
+
+1. Open Home Assistant.
+2. Open HACS.
+3. Go to **Integrations**.
+4. Open the three dot menu.
+5. Choose **Custom repositories**.
+6. Add your repository URL, for example:
 
 ```text
 https://github.com/guitar82/family_defcon
 ```
 
-6. Select category **Integration**.
-7. Install **Family DEFCON**.
-8. Restart Home Assistant.
-
-HACS custom integration repositories need a root `hacs.json` file and the integration files under `custom_components/<domain>/`. This repository follows that structure.
+7. Select category **Integration**.
+8. Install **Family DEFCON**.
+9. Restart Home Assistant.
 
 ## Home Assistant configuration
 
@@ -38,7 +61,7 @@ Add this to `configuration.yaml`:
 family_defcon:
 ```
 
-Copy the example config file from this repository:
+Then copy the example config file from this repository:
 
 ```text
 family_defcon.yaml
@@ -50,7 +73,7 @@ to:
 /config/family_defcon.yaml
 ```
 
-Edit that file for your own people, PINs, stations, AdGuard URL, AdGuard client names, penalties, and reset rules.
+Edit `/config/family_defcon.yaml` for your own people, PINs, stations, AdGuard URL, AdGuard client names, penalties, and dashboard targets.
 
 ## Secrets
 
@@ -61,285 +84,115 @@ adguard_username: your_adguard_username
 adguard_password: your_adguard_password
 ```
 
-## Required AdGuard setup
-
-Create persistent clients in AdGuard Home. The default example expects:
-
-```text
-Parent 1
-Parent 2
-Child 1
-Child 2
-Child 3
-```
-
-The names can be changed in `family_defcon.yaml`:
+The example config references those secrets here:
 
 ```yaml
 dns:
   adguard_home:
-    clients:
-      Child 1:
-        client_name: Child 1
+    username_secret: adguard_username
+    password_secret: adguard_password
 ```
 
-The `client_name` must match the persistent client name in AdGuard Home.
-
-## AdGuard rule behavior
-
-Family DEFCON uses AdGuard Home custom filtering rules. It reads existing custom rules, preserves anything outside the managed block, and writes the current DEFCON rules between:
-
-```text
-! FAMILY DEFCON START
-! FAMILY DEFCON END
-```
-
-Example when Child 1 is blocked:
-
-```text
-! FAMILY DEFCON START
-||*^$client='Child 1'
-! FAMILY DEFCON END
-```
-
-## Default PINs
-
-Change these before real use:
-
-```text
-Parent 1: 1111
-Parent 2: 2222
-Child 1: 3333
-Child 2: 4444
-Child 3: 5555
-```
-
-## Test service call
-
-After restart, go to **Developer Tools → Actions** and run:
+## Example configuration
 
 ```yaml
-action: family_defcon.set_armed
-data:
-  enabled: true
-```
+people:
+  - Parent 1
+  - Parent 2
+  - Child 1
+  - Child 2
+  - Child 3
+
+default_targets:
+  - Child 1
+  - Child 2
+  - Child 3
+
+parent_targets:
+  - Parent 1
+  - Parent 2
+
+allow_parent_targets_default: false
+
+auth:
+  mode: pin
+  max_bad_pin_attempts: 3
+  lockout_seconds_after_bad_pins: 120
+  users:
+    Parent 1:
+      pin: "1111"
+      role: parent
+    Parent 2:
+      pin: "2222"
+      role: parent
+    Child 1:
+      pin: "3333"
+      role: child
+    Child 2:
+      pin: "4444"
+      role: child
+    Child 3:
+      pin: "5555"
+      role: child
 
-Then:
-
-```yaml
-action: family_defcon.launch_with_pin
-data:
-  pin: "4444"
-  target: Child 1
-  station: station_1
-```
-
-With the default config, PIN `4444` is Child 2.
-
-## Dashboard
-
-A starter dashboard card is included at:
-
-```text
-examples/dashboard_card.yaml
-```
-
-Paste it into a Home Assistant manual card.
-
-## ESPHome
-
-A starter ESPHome example is included at:
-
-```text
-examples/esphome_shared_terminal_starter.yaml
-```
-
-This is only a service call starter. A full touchscreen UI can be built on top of it.
-
-## Repository structure
-
-```text
-custom_components/family_defcon/
-  __init__.py
-  binary_sensor.py
-  const.py
-  manifest.json
-  sensor.py
-  services.yaml
-  switch.py
-
-hacs.json
-README.md
-family_defcon.yaml
-configuration.yaml.example
-secrets.yaml.example
-examples/
-```
-
-## Upgrade notes
-
-HACS installs and updates only the integration files under:
-
-```text
-custom_components/family_defcon/
-```
-
-It will not automatically overwrite your local `/config/family_defcon.yaml`, which is good. Your personal settings stay local.
-
-
-## v1.5 Generic examples
-
-The public HACS package uses generic example people:
-
-```text
-Parent 1
-Parent 2
-Child 1
-Child 2
-Child 3
-```
-
-Put your real family names only in your local `/config/family_defcon.yaml`.
-
-
-## Compact launch dashboard
-
-v1.6 includes a compact dashboard launch interface.
-
-Files:
-
-```text
-examples/compact_launch_dashboard_card.yaml
-examples/compact_launch_helpers.yaml
-examples/compact_launch_scripts.yaml
-examples/compact_launch_station.yaml
-```
-
-Flow:
-
-```text
-Status banner
-Enter PIN
-Select target
-Confirm targeting
-Launch or cancel
-```
-
-The example uses generic people:
-
-```text
-Parent 1
-Parent 2
-Child 1
-Child 2
-Child 3
-```
-
-If your local `/config/family_defcon.yaml` uses different names, update the target options and status sensor entity IDs in the dashboard card.
-
-
-## v1.7 Dashboard package
-
-v1.7 adds a Home Assistant package file so users do not have to manually create dashboard helpers and scripts.
-
-File:
-
-```text
-packages/family_defcon_dashboard.yaml
-```
-
-### Enable packages once
-
-Add this to `configuration.yaml` if you do not already use packages:
-
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
-
-### Install dashboard package
-
-Copy:
-
-```text
-packages/family_defcon_dashboard.yaml
-```
-
-to:
-
-```text
-/config/packages/family_defcon_dashboard.yaml
-```
-
-Restart Home Assistant.
-
-### Add dashboard card
-
-Paste this into a Manual card:
-
-```text
-examples/compact_launch_dashboard_card.yaml
-```
-
-### Add dashboard station
-
-Make sure your local `/config/family_defcon.yaml` has this under `stations:`:
-
-```yaml
-  dashboard:
-    name: Home Assistant Dashboard
-    enabled: true
-    key_entity: ""
-```
-
-Then run:
-
-```yaml
-action: family_defcon.reload_config
-```
-
-The package creates:
-
-```text
-input_text.family_defcon_dashboard_pin
-input_select.family_defcon_dashboard_target
-input_boolean.family_defcon_launch_confirm
-script.family_defcon_dashboard_launch
-script.family_defcon_dashboard_cancel
-```
-
-
-## v1.8 Easier dashboard setup
-
-v1.8 creates the dashboard launch entities directly in the integration.
-
-No helper package is required.
-
-Entities created:
-
-```text
-text.family_defcon_dashboard_pin
-select.family_defcon_dashboard_target
-button.family_defcon_dashboard_confirm_targeting
-button.family_defcon_dashboard_launch
-button.family_defcon_dashboard_cancel
-```
-
-To enable the dashboard flow:
-
-1. Make sure your local `/config/family_defcon.yaml` has a `dashboard:` section.
-2. Make sure `stations:` has the dashboard station.
-3. Restart Home Assistant after installing/updating the integration.
-4. Paste `examples/compact_launch_dashboard_card.yaml` into a Manual card.
-
-Example local config:
-
-```yaml
 stations:
   dashboard:
     name: Home Assistant Dashboard
     enabled: true
     key_entity: ""
+
+  station_1:
+    name: Kitchen Terminal
+    enabled: true
+    key_entity: ""
+
+require_station_match: false
+require_key_for_launch: false
+cooldown_seconds: 30
+
+launches_before_mutual_destruction: 5
+chain_before_mutual_destruction: 4
+daily_reset_time: "05:00:00"
+max_event_log: 25
+
+penalties:
+  first_strike_target_minutes: 30
+  retaliator_extra_minutes: 15
+  retaliation_target_minutes: 30
+  reattacker_extra_minutes: 15
+  reattack_target_minutes: 45
+
+dns:
+  enabled: true
+  provider: adguard_home
+  enforcement_mode: active
+  mutual_destruction_scope: default_targets
+
+  adguard_home:
+    base_url: "http://192.168.1.11:3000"
+    username_secret: adguard_username
+    password_secret: adguard_password
+    username: ""
+    password: ""
+    managed_start_marker: "! FAMILY DEFCON START"
+    managed_end_marker: "! FAMILY DEFCON END"
+
+    clients:
+      Parent 1:
+        client_name: Parent 1
+        enabled: true
+      Parent 2:
+        client_name: Parent 2
+        enabled: true
+      Child 1:
+        client_name: Child 1
+        enabled: true
+      Child 2:
+        client_name: Child 2
+        enabled: true
+      Child 3:
+        client_name: Child 3
+        enabled: true
 
 dashboard:
   station_id: dashboard
@@ -351,3 +204,276 @@ dashboard:
     - Parent 1
     - Parent 2
 ```
+
+## AdGuard Home setup
+
+Family DEFCON blocks internet access through AdGuard Home custom filtering rules.
+
+For per person blocking to work, AdGuard must see each device or person as a separate client. The best setup is one AdGuard persistent client per person.
+
+Example:
+
+```text
+Child 1
+  Child 1 phone
+  Child 1 tablet
+  Child 1 laptop
+
+Child 2
+  Child 2 phone
+  Child 2 console
+```
+
+Then map those persistent client names in `family_defcon.yaml`:
+
+```yaml
+dns:
+  adguard_home:
+    clients:
+      Child 1:
+        client_name: Child 1
+        enabled: true
+```
+
+When Child 1 is blocked, Family DEFCON manages a rule like:
+
+```text
+||*^$client='Child 1'
+```
+
+### Important DHCP note
+
+If AdGuard only sees your router as the client, per person blocking will not work. AdGuard needs to see the actual device or persistent client.
+
+Good:
+
+```text
+Device → AdGuard
+```
+
+Bad for per person rules:
+
+```text
+Device → Router DNS forwarder → AdGuard
+```
+
+If your router does not let you hand out AdGuard as the DNS server, you can use AdGuard as your DHCP server or manually set DNS on the devices.
+
+## Managed AdGuard rules
+
+Family DEFCON preserves existing AdGuard custom rules and only manages rules between:
+
+```text
+! FAMILY DEFCON START
+! FAMILY DEFCON END
+```
+
+Example:
+
+```text
+! FAMILY DEFCON START
+||*^$client='Child 1'
+||*^$client='Child 2'
+! FAMILY DEFCON END
+```
+
+## Created entities
+
+Core entities include:
+
+```text
+sensor.family_defcon_level
+sensor.family_defcon_peace_status
+sensor.family_defcon_daily_launches
+sensor.family_defcon_conflict_chain
+sensor.family_defcon_last_launcher
+sensor.family_defcon_last_target
+sensor.family_defcon_last_event
+sensor.family_defcon_dashboard_people
+switch.family_defcon_command_system_armed
+switch.family_defcon_allow_parent_targets
+binary_sensor.family_defcon_mutual_wifi_destruction
+```
+
+For each configured person, Family DEFCON creates:
+
+```text
+sensor.<person>_wifi_status
+sensor.<person>_wifi_minutes_remaining
+```
+
+Example:
+
+```text
+sensor.child_1_wifi_status
+sensor.child_1_wifi_minutes_remaining
+```
+
+Dashboard launch entities:
+
+```text
+text.family_defcon_dashboard_pin
+select.family_defcon_dashboard_target
+button.family_defcon_dashboard_confirm_targeting
+button.family_defcon_dashboard_launch
+button.family_defcon_dashboard_cancel
+```
+
+## Services
+
+### Arm or disarm the system
+
+```yaml
+action: family_defcon.set_armed
+data:
+  enabled: true
+```
+
+```yaml
+action: family_defcon.set_armed
+data:
+  enabled: false
+```
+
+### Launch with PIN
+
+```yaml
+action: family_defcon.launch_with_pin
+data:
+  pin: "4444"
+  target: Child 1
+  station: dashboard
+```
+
+### Clear all
+
+```yaml
+action: family_defcon.clear_all
+```
+
+### Stand down
+
+Resets the conflict chain without clearing active timeouts.
+
+```yaml
+action: family_defcon.stand_down
+```
+
+### Enforce now
+
+Reapplies the current Family DEFCON block/unblock state to AdGuard.
+
+```yaml
+action: family_defcon.enforce_now
+```
+
+### Reload config
+
+Reloads `/config/family_defcon.yaml`.
+
+```yaml
+action: family_defcon.reload_config
+```
+
+## Dashboard
+
+The recommended dashboard card is:
+
+```text
+examples/button_card_config_driven_dashboard.yaml
+```
+
+This card uses `custom:button-card` and reads the people/status rows from:
+
+```text
+sensor.family_defcon_dashboard_people
+```
+
+That means the dashboard does not need hardcoded person names.
+
+Install `custom:button-card` from HACS Frontend first.
+
+Then paste the YAML into a Manual dashboard card.
+
+A simpler built in Lovelace example is also included:
+
+```text
+examples/compact_launch_dashboard_card.yaml
+```
+
+## ESPHome
+
+A starter ESPHome example is included:
+
+```text
+examples/esphome_shared_terminal_starter.yaml
+```
+
+The ESPHome terminal can call:
+
+```yaml
+homeassistant.action:
+  action: family_defcon.launch_with_pin
+  data:
+    pin: "4444"
+    target: "Child 1"
+    station: "station_1"
+```
+
+## Safety and limitations
+
+Family DEFCON blocks DNS, not the physical WiFi connection.
+
+It does not block:
+
+- Direct IP traffic
+- Cellular data
+- VPN bypasses
+- Private DNS that bypasses AdGuard
+- Cached DNS until the cache expires
+
+For a family consequence system, this is usually enough. For stronger enforcement, pair AdGuard with router firewall rules that prevent clients from using outside DNS.
+
+## Repository structure
+
+```text
+custom_components/family_defcon/
+  __init__.py
+  binary_sensor.py
+  button.py
+  const.py
+  manifest.json
+  select.py
+  sensor.py
+  services.yaml
+  switch.py
+  text.py
+
+examples/
+  button_card_config_driven_dashboard.yaml
+  compact_launch_dashboard_card.yaml
+  esphome_shared_terminal_starter.yaml
+
+family_defcon.yaml
+configuration.yaml.example
+secrets.yaml.example
+hacs.json
+README.md
+info.md
+```
+
+## Upgrade notes
+
+HACS installs and updates the integration files under:
+
+```text
+custom_components/family_defcon/
+```
+
+It does not automatically overwrite your local:
+
+```text
+/config/family_defcon.yaml
+```
+
+That means your personal people, PINs, stations, and AdGuard settings remain local.

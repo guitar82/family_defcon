@@ -7,7 +7,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, SIGNAL_UPDATE
 
 async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    entities = [DefconLevelSensor(hass), PeaceStatusSensor(hass), DailyLaunchesSensor(hass), ConflictChainSensor(hass), LastLauncherSensor(hass), LastTargetSensor(hass), LastEventSensor(hass)]
+    entities = [DefconLevelSensor(hass), PeaceStatusSensor(hass), DailyLaunchesSensor(hass), ConflictChainSensor(hass), LastLauncherSensor(hass), LastTargetSensor(hass), LastEventSensor(hass), DashboardPeopleSensor(hass)]
     for person in hass.data[DOMAIN]["config"]["people"]:
         entities.append(PersonWifiStatusSensor(hass, person))
         entities.append(PersonMinutesRemainingSensor(hass, person))
@@ -61,6 +61,40 @@ class LastEventSensor(Base):
     def native_value(self): return self.s["last_event"]
     @property
     def extra_state_attributes(self): return {"event_log": self.s.get("event_log", [])}
+
+
+def _entity_slug(name: str) -> str:
+    """Match Home Assistant's simple entity slug style for generated person sensors."""
+    slug = name.lower()
+    for char in [" ", "-", ".", "'", "\"", "/", "\\", "(", ")", "[", "]"]:
+        slug = slug.replace(char, "_")
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
+class DashboardPeopleSensor(Base):
+    _attr_name = "Dashboard People"
+    _attr_unique_id = "family_defcon_dashboard_people"
+
+    @property
+    def native_value(self):
+        return len(self.c["people"])
+
+    @property
+    def extra_state_attributes(self):
+        people = []
+        for person in self.c["people"]:
+            slug = _entity_slug(person)
+            people.append({
+                "name": person,
+                "status_entity": f"sensor.{slug}_wifi_status",
+                "minutes_entity": f"sensor.{slug}_wifi_minutes_remaining",
+                "is_default_target": person in self.c.get("default_targets", []),
+                "is_parent_target": person in self.c.get("parent_targets", []),
+            })
+        return {"people": people}
+
 
 class PersonWifiStatusSensor(Base):
     def __init__(self, hass, person):
