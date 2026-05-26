@@ -14,7 +14,7 @@ cards:
     title: Command Controls
     entities:
       - switch.family_defcon_command_system_armed
-      - switch.family_defcon_allow_mom_and_dad_targets
+      - switch.family_defcon_allow_parent_1_and_parent_2_targets
       - binary_sensor.family_defcon_mutual_wifi_destruction
       - sensor.family_defcon_daily_launches
       - sensor.family_defcon_conflict_chain
@@ -24,16 +24,16 @@ cards:
   - type: entities
     title: Family WiFi Status
     entities:
-      - sensor.mom_wifi_status
-      - sensor.mom_wifi_minutes_remaining
-      - sensor.dad_wifi_status
-      - sensor.dad_wifi_minutes_remaining
-      - sensor.henry_wifi_status
-      - sensor.henry_wifi_minutes_remaining
-      - sensor.marc_wifi_status
-      - sensor.marc_wifi_minutes_remaining
-      - sensor.maggie_wifi_status
-      - sensor.maggie_wifi_minutes_remaining
+      - sensor.parent_1_wifi_status
+      - sensor.parent_1_wifi_minutes_remaining
+      - sensor.parent_2_wifi_status
+      - sensor.parent_2_wifi_minutes_remaining
+      - sensor.child_1_wifi_status
+      - sensor.child_1_wifi_minutes_remaining
+      - sensor.child_2_wifi_status
+      - sensor.child_2_wifi_minutes_remaining
+      - sensor.child_3_wifi_status
+      - sensor.child_3_wifi_minutes_remaining
 
   - type: grid
     title: Parent Controls

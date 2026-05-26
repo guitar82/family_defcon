@@ -23,7 +23,7 @@ class ArmedSwitch(BaseSwitch):
     async def async_turn_off(self, **kwargs): await self.hass.services.async_call(DOMAIN, "set_armed", {"enabled": False}, blocking=False)
 
 class AllowParentTargetsSwitch(BaseSwitch):
-    _attr_name = "Allow Mom and Dad Targets"; _attr_unique_id = "family_defcon_allow_parent_targets"
+    _attr_name = "Allow Parent 1 and Parent 2 Targets"; _attr_unique_id = "family_defcon_allow_parent_targets"
     @property
     def is_on(self): return bool(self.s["allow_parent_targets"])
     async def async_turn_on(self, **kwargs): await self.hass.services.async_call(DOMAIN, "set_parent_targets", {"enabled": True}, blocking=False)

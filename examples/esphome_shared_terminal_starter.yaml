@@ -22,11 +22,11 @@ wifi:
 
 button:
   - platform: template
-    name: "Test Marc PIN Launches at Henry"
+    name: "Test Child 2 PIN Launches at Child 1"
     on_press:
       - homeassistant.action:
           action: family_defcon.launch_with_pin
           data:
             pin: "4444"
-            target: "Henry"
+            target: "Child 1"
             station: "${station_id}"

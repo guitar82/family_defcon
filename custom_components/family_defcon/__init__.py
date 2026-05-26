@@ -540,7 +540,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_set_parent_targets(call: ServiceCall) -> None:
         st()["allow_parent_targets"] = bool(call.data["enabled"])
-        await log_event("Mom and Dad are targetable." if call.data["enabled"] else "Mom and Dad are protected.")
+        await log_event("Parent 1 and Parent 2 are targetable." if call.data["enabled"] else "Parent 1 and Parent 2 are protected.")
 
     async def handle_enforce_now(call: ServiceCall) -> None:
         await enforce_now()
