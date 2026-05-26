@@ -1,6 +1,6 @@
-# Family DEFCON v1.0
+# Family DEFCON v1.1
 
-All variable data is now in `family_defcon.yaml`. v0.8 fixed Home Assistant blocking I/O warnings by loading YAML files through the executor. v1.0 fixes the HomeAssistant.helpers discovery error on newer Home Assistant versions.
+All variable data is now in `family_defcon.yaml`. v0.8 fixed Home Assistant blocking I/O warnings by loading YAML files through the executor. v1.1 fixes the HomeAssistant.helpers discovery error on newer Home Assistant versions.
 
 You no longer need `rest_commands.yaml` or `scripts.yaml` for AdGuard Home blocking.
 
@@ -94,28 +94,24 @@ dns:
 ```
 
 
-## v1.0 Fixes
+## v1.1 Fixes
 
 - Replaced deprecated `hass.helpers.discovery.load_platform(...)` with `async_load_platform(...)`.
 - Keeps the v0.8 async safe YAML loading fix.
 
 
-## v1.0 AdGuard Fix
+## v1.1 AdGuard custom rules fix
 
-AdGuard Home does not allow `data:` URLs in `/control/filtering/add_url`. v1.0 now uses:
+v1.1 uses AdGuard custom filtering rules:
 
-- `GET /control/filtering/rules`
-- `POST /control/filtering/set_rules`
+```text
+GET /control/filtering/rules
+POST /control/filtering/set_rules
+```
 
-The integration preserves your existing custom filtering rules and manages only the block between:
+It preserves existing custom rules and only manages rules between:
 
 ```text
 ! FAMILY DEFCON START
 ! FAMILY DEFCON END
-```
-
-Rules created look like:
-
-```text
-||*^$client='Henry'
 ```
