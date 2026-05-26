@@ -1,0 +1,32 @@
+substitutions:
+  station_id: "station_1"
+  station_name: "Kitchen DEFCON Terminal"
+
+esphome:
+  name: family-defcon-terminal-1
+  friendly_name: Family DEFCON Terminal 1
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+api:
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+button:
+  - platform: template
+    name: "Test Marc PIN Launches at Henry"
+    on_press:
+      - homeassistant.action:
+          action: family_defcon.launch_with_pin
+          data:
+            pin: "4444"
+            target: "Henry"
+            station: "${station_id}"

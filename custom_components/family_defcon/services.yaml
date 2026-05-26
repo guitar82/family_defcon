@@ -1,49 +1,64 @@
 launch:
   name: Launch
-  description: Launch a Family DEFCON WiFi strike.
+  description: Launch using a fixed launcher name.
   fields:
     launcher:
       name: Launcher
       required: true
-      selector:
-        text:
+      selector: {text: {}}
     target:
       name: Target
       required: true
-      selector:
-        text:
+      selector: {text: {}}
     station:
       name: Station
+      required: false
+      selector: {text: {}}
+
+launch_with_pin:
+  name: Launch with PIN
+  description: Launch from any terminal using a user's PIN.
+  fields:
+    pin:
+      name: PIN
       required: true
       selector:
         text:
+          type: password
+    target:
+      name: Target
+      required: true
+      selector: {text: {}}
+    station:
+      name: Station
+      required: false
+      selector: {text: {}}
+
 clear_all:
   name: Clear All
-  description: Clear all Family DEFCON timeouts, launches, and conflict chain.
+  description: Clear all DEFCON timeouts, counters, and active lockouts.
+
 stand_down:
   name: Stand Down
-  description: Reset the current conflict chain without clearing active timeouts.
+  description: Reset the conflict chain without clearing active timeouts.
+
 set_armed:
   name: Set Armed
-  description: Arm or disarm the command system.
   fields:
     enabled:
       name: Enabled
       required: true
-      selector:
-        boolean:
+      selector: {boolean: {}}
+
 set_parent_targets:
   name: Set Parent Targets
-  description: Allow or protect Mom and Dad as targets.
   fields:
     enabled:
       name: Enabled
       required: true
-      selector:
-        boolean:
+      selector: {boolean: {}}
+
 enforce_now:
   name: Enforce Now
-  description: Reapply configured DNS/custom service blocking based on current DEFCON state.
 reload_config:
   name: Reload Config
-  description: Reload /config/family_defcon.yaml without restarting Home Assistant.

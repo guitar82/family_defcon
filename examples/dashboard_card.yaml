@@ -1,0 +1,19 @@
+type: entities
+title: Family DEFCON
+entities:
+  - switch.family_defcon_command_system_armed
+  - switch.family_defcon_allow_mom_and_dad_targets
+  - sensor.family_defcon_level
+  - sensor.family_defcon_peace_status
+  - sensor.family_defcon_daily_launches
+  - sensor.family_defcon_conflict_chain
+  - sensor.family_defcon_last_launcher
+  - sensor.family_defcon_last_target
+  - sensor.family_defcon_last_event
+  - binary_sensor.family_defcon_mutual_wifi_destruction
+  - sensor.henry_wifi_status
+  - sensor.henry_wifi_minutes_remaining
+  - sensor.marc_wifi_status
+  - sensor.marc_wifi_minutes_remaining
+  - sensor.maggie_wifi_status
+  - sensor.maggie_wifi_minutes_remaining

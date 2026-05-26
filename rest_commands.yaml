@@ -1,0 +1,99 @@
+adguard_block_mom:
+  url: "http://192.168.1.11:3000/control/filtering/add_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"name":"Family DEFCON Block Mom","url":"data:text/plain,||*^$client='Mom'"}
+
+adguard_unblock_mom:
+  url: "http://192.168.1.11:3000/control/filtering/remove_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"url":"data:text/plain,||*^$client='Mom'"}
+
+adguard_block_dad:
+  url: "http://192.168.1.11:3000/control/filtering/add_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"name":"Family DEFCON Block Dad","url":"data:text/plain,||*^$client='Dad'"}
+
+adguard_unblock_dad:
+  url: "http://192.168.1.11:3000/control/filtering/remove_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"url":"data:text/plain,||*^$client='Dad'"}
+
+adguard_block_henry:
+  url: "http://192.168.1.11:3000/control/filtering/add_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"name":"Family DEFCON Block Henry","url":"data:text/plain,||*^$client='Henry'"}
+
+adguard_unblock_henry:
+  url: "http://192.168.1.11:3000/control/filtering/remove_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"url":"data:text/plain,||*^$client='Henry'"}
+
+adguard_block_marc:
+  url: "http://192.168.1.11:3000/control/filtering/add_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"name":"Family DEFCON Block Marc","url":"data:text/plain,||*^$client='Marc'"}
+
+adguard_unblock_marc:
+  url: "http://192.168.1.11:3000/control/filtering/remove_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"url":"data:text/plain,||*^$client='Marc'"}
+
+adguard_block_maggie:
+  url: "http://192.168.1.11:3000/control/filtering/add_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"name":"Family DEFCON Block Maggie","url":"data:text/plain,||*^$client='Maggie'"}
+
+adguard_unblock_maggie:
+  url: "http://192.168.1.11:3000/control/filtering/remove_url"
+  method: post
+  username: !secret adguard_username
+  password: !secret adguard_password
+  authentication: basic
+  content_type: "application/json"
+  payload: >
+    {"url":"data:text/plain,||*^$client='Maggie'"}

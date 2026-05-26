@@ -1,41 +1,53 @@
-# Family DEFCON v0.5
+# Family DEFCON v0.6 PIN Mode
 
-A Home Assistant custom integration for a family WiFi peace/retaliation simulator.
+GitHub ready Home Assistant custom integration for Family DEFCON.
 
-## What is included
+## New in v0.6
 
-- Home Assistant custom integration
-- Config file at `/config/family_defcon.yaml`
-- Unlimited station support
-- Station IDs such as `station_3`
-- Commander validation
-- Optional key entity validation
-- Parent target protection
-- DEFCON level sensor
-- Peace status sensor
-- Per person status and minutes remaining sensors
-- Persistent state
-- Daily reset
-- Cooldown protection
-- Custom service based DNS/router hooks
-- Fake blocking scripts for testing
-- Starter ESPHome station template
+- `family_defcon.launch_with_pin`
+- Any person can use any terminal
+- PINs identify the commander
+- Shared station list
+- AdGuard Home REST command examples
+- Full scripts file
 
 ## Install
 
-1. Copy `custom_components/family_defcon/` to `/config/custom_components/family_defcon/`.
-2. Copy `family_defcon.yaml` to `/config/family_defcon.yaml`.
-3. Add this to `configuration.yaml`:
+Copy `custom_components/family_defcon` to `/config/custom_components/family_defcon`.
+
+Copy these files to `/config`:
+
+- `family_defcon.yaml`
+- `rest_commands.yaml`
+- `scripts.yaml`
+
+Add to `configuration.yaml`:
 
 ```yaml
 family_defcon:
+rest_command: !include rest_commands.yaml
+script: !include scripts.yaml
 ```
 
-4. Restart Home Assistant.
+Add to `secrets.yaml`:
 
-## First test
+```yaml
+adguard_username: your_adguard_username
+adguard_password: your_adguard_password
+```
 
-Run this from Developer Tools > Actions:
+Create toggle helpers:
+
+- `input_boolean.internet_block_mom`
+- `input_boolean.internet_block_dad`
+- `input_boolean.internet_block_henry`
+- `input_boolean.internet_block_marc`
+- `input_boolean.internet_block_maggie`
+- `input_boolean.internet_block_all_kids`
+
+Restart Home Assistant.
+
+## Test
 
 ```yaml
 action: family_defcon.set_armed
@@ -46,33 +58,19 @@ data:
 Then:
 
 ```yaml
-action: family_defcon.launch
+action: family_defcon.launch_with_pin
 data:
-  launcher: Henry
-  target: Marc
-  station: station_3
+  pin: "4444"
+  target: Henry
+  station: station_1
 ```
 
-Expected result: Marc becomes blocked for about 30 minutes and DEFCON becomes 4.
+Default PINs:
 
-## DNS blocking
+- Mom: 1111
+- Dad: 2222
+- Henry: 3333
+- Marc: 4444
+- Maggie: 5555
 
-The integration does not hardcode AdGuard or Pi hole. It calls Home Assistant scripts from the config file. Start with `examples/scripts_fake_blocking.yaml`, then replace those scripts with your real DNS/router blocking actions later.
-
-To activate enforcement after your scripts are ready, change this in `/config/family_defcon.yaml`:
-
-```yaml
-dns:
-  enabled: true
-  enforcement_mode: active
-```
-
-Then call:
-
-```yaml
-action: family_defcon.reload_config
-```
-
-## ESPHome
-
-Use `examples/esphome_station_template.yaml` as the starting station config. It is intentionally display hardware neutral because the exact display and touchscreen driver depend on the screen you buy.
+Change these before real use.
