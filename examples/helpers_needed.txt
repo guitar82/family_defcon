@@ -1,7 +1,0 @@
-Create these toggle helpers:
-input_boolean.internet_block_mom
-input_boolean.internet_block_dad
-input_boolean.internet_block_henry
-input_boolean.internet_block_marc
-input_boolean.internet_block_maggie
-input_boolean.internet_block_all_kids
