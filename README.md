@@ -1,6 +1,6 @@
-# Family DEFCON v0.8
+# Family DEFCON v0.9
 
-All variable data is now in `family_defcon.yaml`. v0.8 also fixes Home Assistant blocking I/O warnings by loading YAML files through the executor.
+All variable data is now in `family_defcon.yaml`. v0.8 fixed Home Assistant blocking I/O warnings by loading YAML files through the executor. v0.9 fixes the HomeAssistant.helpers discovery error on newer Home Assistant versions.
 
 You no longer need `rest_commands.yaml` or `scripts.yaml` for AdGuard Home blocking.
 
@@ -92,3 +92,9 @@ If you used v0.6 with `rest_commands.yaml` and block scripts, you can leave thos
 dns:
   provider: adguard_home
 ```
+
+
+## v0.9 Fixes
+
+- Replaced deprecated `hass.helpers.discovery.load_platform(...)` with `async_load_platform(...)`.
+- Keeps the v0.8 async safe YAML loading fix.

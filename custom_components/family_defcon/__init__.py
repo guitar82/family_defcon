@@ -21,6 +21,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.discovery import async_load_platform
 
 from .const import (
     DOMAIN,
@@ -539,8 +540,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     hass.data[DOMAIN]["remove_interval"] = async_track_time_interval(hass, periodic, timedelta(minutes=1))
 
-    hass.helpers.discovery.load_platform("sensor", DOMAIN, {}, config)
-    hass.helpers.discovery.load_platform("switch", DOMAIN, {}, config)
-    hass.helpers.discovery.load_platform("binary_sensor", DOMAIN, {}, config)
+    await async_load_platform(hass, "sensor", DOMAIN, {}, config)
+    await async_load_platform(hass, "switch", DOMAIN, {}, config)
+    await async_load_platform(hass, "binary_sensor", DOMAIN, {}, config)
 
     return True
