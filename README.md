@@ -200,3 +200,154 @@ Child 3
 ```
 
 Put your real family names only in your local `/config/family_defcon.yaml`.
+
+
+## Compact launch dashboard
+
+v1.6 includes a compact dashboard launch interface.
+
+Files:
+
+```text
+examples/compact_launch_dashboard_card.yaml
+examples/compact_launch_helpers.yaml
+examples/compact_launch_scripts.yaml
+examples/compact_launch_station.yaml
+```
+
+Flow:
+
+```text
+Status banner
+Enter PIN
+Select target
+Confirm targeting
+Launch or cancel
+```
+
+The example uses generic people:
+
+```text
+Parent 1
+Parent 2
+Child 1
+Child 2
+Child 3
+```
+
+If your local `/config/family_defcon.yaml` uses different names, update the target options and status sensor entity IDs in the dashboard card.
+
+
+## v1.7 Dashboard package
+
+v1.7 adds a Home Assistant package file so users do not have to manually create dashboard helpers and scripts.
+
+File:
+
+```text
+packages/family_defcon_dashboard.yaml
+```
+
+### Enable packages once
+
+Add this to `configuration.yaml` if you do not already use packages:
+
+```yaml
+homeassistant:
+  packages: !include_dir_named packages
+```
+
+### Install dashboard package
+
+Copy:
+
+```text
+packages/family_defcon_dashboard.yaml
+```
+
+to:
+
+```text
+/config/packages/family_defcon_dashboard.yaml
+```
+
+Restart Home Assistant.
+
+### Add dashboard card
+
+Paste this into a Manual card:
+
+```text
+examples/compact_launch_dashboard_card.yaml
+```
+
+### Add dashboard station
+
+Make sure your local `/config/family_defcon.yaml` has this under `stations:`:
+
+```yaml
+  dashboard:
+    name: Home Assistant Dashboard
+    enabled: true
+    key_entity: ""
+```
+
+Then run:
+
+```yaml
+action: family_defcon.reload_config
+```
+
+The package creates:
+
+```text
+input_text.family_defcon_dashboard_pin
+input_select.family_defcon_dashboard_target
+input_boolean.family_defcon_launch_confirm
+script.family_defcon_dashboard_launch
+script.family_defcon_dashboard_cancel
+```
+
+
+## v1.8 Easier dashboard setup
+
+v1.8 creates the dashboard launch entities directly in the integration.
+
+No helper package is required.
+
+Entities created:
+
+```text
+text.family_defcon_dashboard_pin
+select.family_defcon_dashboard_target
+button.family_defcon_dashboard_confirm_targeting
+button.family_defcon_dashboard_launch
+button.family_defcon_dashboard_cancel
+```
+
+To enable the dashboard flow:
+
+1. Make sure your local `/config/family_defcon.yaml` has a `dashboard:` section.
+2. Make sure `stations:` has the dashboard station.
+3. Restart Home Assistant after installing/updating the integration.
+4. Paste `examples/compact_launch_dashboard_card.yaml` into a Manual card.
+
+Example local config:
+
+```yaml
+stations:
+  dashboard:
+    name: Home Assistant Dashboard
+    enabled: true
+    key_entity: ""
+
+dashboard:
+  station_id: dashboard
+  default_target: Child 1
+  targets:
+    - Child 1
+    - Child 2
+    - Child 3
+    - Parent 1
+    - Parent 2
+```

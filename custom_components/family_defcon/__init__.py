@@ -191,6 +191,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "blocked_until": {person: None for person in people},
         "last_reset_date": str(stored.get("last_reset_date", "")),
         "adguard_applied": dict(stored.get("adguard_applied", {})),
+        "dashboard_pin": "",
+        "dashboard_target": str(stored.get("dashboard_target", "")),
+        "dashboard_confirm": bool(stored.get("dashboard_confirm", False)),
     }
 
     for person, value in stored.get("blocked_until", {}).items():
@@ -565,6 +568,72 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             await log_event(f"{person} manually unblocked.")
             await enforce_now()
 
+    def dashboard_config() -> dict:
+        dash = conf().get("dashboard", {})
+        return dash if isinstance(dash, dict) else {}
+
+    def dashboard_targets() -> list[str]:
+        dash = dashboard_config()
+        configured = dash.get("targets")
+        if isinstance(configured, list) and configured:
+            return [str(item) for item in configured]
+        return list(dict.fromkeys(conf()["default_targets"] + conf()["parent_targets"]))
+
+    def dashboard_station_id() -> str:
+        return str(dashboard_config().get("station_id", "dashboard"))
+
+    async def dashboard_set_pin(pin: str) -> None:
+        st()["dashboard_pin"] = str(pin)
+        await update_entities()
+
+    async def dashboard_set_target(target: str) -> None:
+        st()["dashboard_target"] = str(target)
+        await save_state()
+        await update_entities()
+
+    async def dashboard_set_confirm(confirm: bool) -> None:
+        st()["dashboard_confirm"] = bool(confirm)
+        await update_entities()
+
+    async def dashboard_cancel() -> None:
+        st()["dashboard_pin"] = ""
+        targets = dashboard_targets()
+        st()["dashboard_target"] = targets[0] if targets else ""
+        st()["dashboard_confirm"] = False
+        await save_state()
+        await update_entities()
+
+    async def dashboard_launch() -> None:
+        pin = str(st().get("dashboard_pin", ""))
+        target = str(st().get("dashboard_target", ""))
+        if not pin:
+            await log_event("Dashboard launch rejected. Missing PIN.")
+            await dashboard_cancel()
+            return
+        if not target:
+            await log_event("Dashboard launch rejected. Missing target.")
+            await dashboard_cancel()
+            return
+
+        await apply_launch_with_dashboard_pin(pin, target, dashboard_station_id())
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
+        await save_state()
+        await update_entities()
+
+    async def apply_launch_with_dashboard_pin(pin: str, target: str, station: str) -> None:
+        launcher = None
+        for person, data in conf()["auth"]["users"].items():
+            if str(data.get("pin", "")) == str(pin):
+                launcher = person
+                break
+
+        if not launcher:
+            await log_event(f"Bad PIN attempt at {station}.")
+            return
+
+        await apply_launch(launcher, target, station)
+
     hass.services.async_register(DOMAIN, "launch", handle_launch, schema=LAUNCH_SCHEMA)
     hass.services.async_register(DOMAIN, "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "clear_all", handle_clear_all)
@@ -594,8 +663,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     hass.data[DOMAIN]["remove_interval"] = async_track_time_interval(hass, periodic, timedelta(minutes=1))
 
+    if not st().get("dashboard_target"):
+        targets = dashboard_targets()
+        st()["dashboard_target"] = targets[0] if targets else ""
+
     await async_load_platform(hass, "sensor", DOMAIN, {}, config)
     await async_load_platform(hass, "switch", DOMAIN, {}, config)
     await async_load_platform(hass, "binary_sensor", DOMAIN, {}, config)
+    await async_load_platform(hass, "text", DOMAIN, {}, config)
+    await async_load_platform(hass, "select", DOMAIN, {}, config)
+    await async_load_platform(hass, "button", DOMAIN, {}, config)
 
     return True

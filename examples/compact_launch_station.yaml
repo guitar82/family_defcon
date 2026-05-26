@@ -1,0 +1,7 @@
+# Optional station entry for family_defcon.yaml.
+# Add this under the existing stations: section.
+
+dashboard:
+  name: Home Assistant Dashboard
+  enabled: true
+  key_entity: ""
