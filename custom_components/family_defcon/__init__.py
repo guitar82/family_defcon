@@ -1,6 +1,6 @@
 """Family DEFCON custom integration.
 
-v0.7 moves variable data into family_defcon.yaml:
+v0.8 moves variable data into family_defcon.yaml and uses async safe file loading:
 people, targets, PINs, stations, AdGuard URL, client names, penalties, timers, and DNS behavior.
 """
 
@@ -56,23 +56,35 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data.setdefault(DOMAIN, {})
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
-    def load_yaml(filename: str) -> dict:
+    async def load_yaml(filename: str) -> dict:
+        """Load a YAML file without blocking Home Assistant's event loop."""
         path = Path(hass.config.path(filename))
         if not path.exists():
             return {}
-        try:
+
+        def _read_yaml() -> dict:
             loaded = yaml.safe_load(path.read_text()) or {}
             return loaded if isinstance(loaded, dict) else {}
+
+        try:
+            return await hass.async_add_executor_job(_read_yaml)
         except Exception as err:
             _LOGGER.error("Family DEFCON could not load %s: %s", filename, err)
             return {}
 
-    def get_secret(secret_name: str, default: str = "") -> str:
+    secrets_cache: dict[str, str] = {}
+
+    async def get_secret(secret_name: str, default: str = "") -> str:
+        """Read a secret from secrets.yaml without blocking the event loop."""
         if not secret_name:
             return default
-        secrets = load_yaml("secrets.yaml")
-        value = secrets.get(secret_name, default)
-        return "" if value is None else str(value)
+
+        if not secrets_cache:
+            secrets = await load_yaml("secrets.yaml")
+            for key, value in secrets.items():
+                secrets_cache[str(key)] = "" if value is None else str(value)
+
+        return secrets_cache.get(secret_name, default)
 
     def normalize_config(raw: dict) -> dict:
         people = list(raw.get("people", DEFAULT_PEOPLE))
@@ -152,10 +164,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             },
         }
 
-    raw = load_yaml(CONFIG_PATH)
+    raw = await load_yaml(CONFIG_PATH)
     if not raw:
         _LOGGER.warning("Family DEFCON config missing or empty at %s.", hass.config.path(CONFIG_PATH))
     hass.data[DOMAIN]["config"] = normalize_config(raw)
+    if not hass.data[DOMAIN]["config"]["people"]:
+        _LOGGER.error("Family DEFCON has no people configured. Add people to /config/family_defcon.yaml.")
 
     stored = await store.async_load() or {}
     people = hass.data[DOMAIN]["config"]["people"]
@@ -239,8 +253,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             _LOGGER.error("Family DEFCON AdGuard base_url is blank.")
             return False
 
-        username = adguard["username"] or get_secret(adguard["username_secret"])
-        password = adguard["password"] or get_secret(adguard["password_secret"])
+        username = adguard["username"] or await get_secret(adguard["username_secret"])
+        password = adguard["password"] or await get_secret(adguard["password_secret"])
         auth = aiohttp.BasicAuth(username, password) if username or password else None
 
         session = async_get_clientsession(hass)
@@ -478,7 +492,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await log_event("Enforcement reapplied.")
 
     async def handle_reload_config(call: ServiceCall) -> None:
-        hass.data[DOMAIN]["config"] = normalize_config(load_yaml(CONFIG_PATH))
+        secrets_cache.clear()
+        hass.data[DOMAIN]["config"] = normalize_config(await load_yaml(CONFIG_PATH))
         await log_event("Config reloaded.")
 
     async def handle_block_person(call: ServiceCall) -> None:

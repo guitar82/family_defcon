@@ -1,6 +1,6 @@
-# Family DEFCON v0.7
+# Family DEFCON v0.8
 
-All variable data is now in `family_defcon.yaml`.
+All variable data is now in `family_defcon.yaml`. v0.8 also fixes Home Assistant blocking I/O warnings by loading YAML files through the executor.
 
 You no longer need `rest_commands.yaml` or `scripts.yaml` for AdGuard Home blocking.
 

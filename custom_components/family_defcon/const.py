@@ -1,8 +1,9 @@
 DOMAIN = "family_defcon"
 
-DEFAULT_PEOPLE = ["Mom", "Dad", "Henry", "Marc", "Maggie"]
-DEFAULT_TARGETS = ["Henry", "Marc", "Maggie"]
-DEFAULT_PARENTS = ["Mom", "Dad"]
+# Empty defaults keep all real family/person data in family_defcon.yaml.
+DEFAULT_PEOPLE = []
+DEFAULT_TARGETS = []
+DEFAULT_PARENTS = []
 
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.state"
