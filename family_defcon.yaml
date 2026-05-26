@@ -97,6 +97,8 @@ dns:
     password: ""
 
     rule_prefix: "Family DEFCON Block"
+    managed_start_marker: "! FAMILY DEFCON START"
+    managed_end_marker: "! FAMILY DEFCON END"
 
     # These must match persistent client names in AdGuard Home.
     clients:
