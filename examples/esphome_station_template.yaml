@@ -1,0 +1,96 @@
+# ESPHome station template. Replace GPIO pins and add your exact display/touch driver.
+substitutions:
+  device_name: henry-command-station
+  friendly_name: Henry Command Station
+  station_id: station_3
+  commander_name: Henry
+  target_1: Marc
+  target_2: Maggie
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+api:
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+binary_sensor:
+  - platform: gpio
+    id: launch_key
+    name: "${friendly_name} Launch Key"
+    pin:
+      number: GPIO4
+      mode: INPUT_PULLUP
+      inverted: true
+
+button:
+  - platform: template
+    name: "${friendly_name} Launch at ${target_1}"
+    on_press:
+      - if:
+          condition:
+            binary_sensor.is_on: launch_key
+          then:
+            - homeassistant.action:
+                action: family_defcon.launch
+                data:
+                  launcher: ${commander_name}
+                  target: ${target_1}
+                  station: ${station_id}
+  - platform: template
+    name: "${friendly_name} Launch at ${target_2}"
+    on_press:
+      - if:
+          condition:
+            binary_sensor.is_on: launch_key
+          then:
+            - homeassistant.action:
+                action: family_defcon.launch
+                data:
+                  launcher: ${commander_name}
+                  target: ${target_2}
+                  station: ${station_id}
+  - platform: template
+    name: "${friendly_name} Stand Down"
+    on_press:
+      - homeassistant.action:
+          action: family_defcon.stand_down
+
+sensor:
+  - platform: homeassistant
+    id: defcon_level
+    entity_id: sensor.family_defcon_level
+  - platform: homeassistant
+    id: henry_minutes
+    entity_id: sensor.henry_wifi_minutes_remaining
+  - platform: homeassistant
+    id: marc_minutes
+    entity_id: sensor.marc_wifi_minutes_remaining
+  - platform: homeassistant
+    id: maggie_minutes
+    entity_id: sensor.maggie_wifi_minutes_remaining
+
+text_sensor:
+  - platform: homeassistant
+    id: peace_status
+    entity_id: sensor.family_defcon_peace_status
+  - platform: homeassistant
+    id: henry_status
+    entity_id: sensor.henry_wifi_status
+  - platform: homeassistant
+    id: marc_status
+    entity_id: sensor.marc_wifi_status
+  - platform: homeassistant
+    id: maggie_status
+    entity_id: sensor.maggie_wifi_status

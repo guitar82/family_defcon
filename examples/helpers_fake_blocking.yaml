@@ -1,0 +1,14 @@
+# Optional YAML helpers if you prefer YAML instead of creating helpers in the UI.
+# Add under input_boolean: in configuration.yaml.
+internet_block_henry:
+  name: Internet Block Henry
+internet_block_marc:
+  name: Internet Block Marc
+internet_block_maggie:
+  name: Internet Block Maggie
+internet_block_mom:
+  name: Internet Block Mom
+internet_block_dad:
+  name: Internet Block Dad
+internet_block_all_kids:
+  name: Internet Block All Kids

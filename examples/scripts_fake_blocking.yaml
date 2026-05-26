@@ -1,0 +1,93 @@
+# Add this to scripts.yaml for safe testing. These only toggle helpers.
+block_henry_internet:
+  alias: Block Henry Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.internet_block_henry
+unblock_henry_internet:
+  alias: Unblock Henry Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.internet_block_henry
+block_marc_internet:
+  alias: Block Marc Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.internet_block_marc
+unblock_marc_internet:
+  alias: Unblock Marc Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.internet_block_marc
+block_maggie_internet:
+  alias: Block Maggie Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.internet_block_maggie
+unblock_maggie_internet:
+  alias: Unblock Maggie Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.internet_block_maggie
+block_mom_internet:
+  alias: Block Mom Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.internet_block_mom
+unblock_mom_internet:
+  alias: Unblock Mom Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.internet_block_mom
+block_dad_internet:
+  alias: Block Dad Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.internet_block_dad
+unblock_dad_internet:
+  alias: Unblock Dad Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.internet_block_dad
+block_all_kids_internet:
+  alias: Block All Kids Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_on
+      target:
+        entity_id:
+          - input_boolean.internet_block_henry
+          - input_boolean.internet_block_marc
+          - input_boolean.internet_block_maggie
+          - input_boolean.internet_block_all_kids
+unblock_all_kids_internet:
+  alias: Unblock All Kids Internet
+  mode: single
+  sequence:
+    - action: input_boolean.turn_off
+      target:
+        entity_id:
+          - input_boolean.internet_block_henry
+          - input_boolean.internet_block_marc
+          - input_boolean.internet_block_maggie
+          - input_boolean.internet_block_all_kids
