@@ -1,3 +1,6 @@
+# Family DEFCON v0.7
+# All variable data lives here.
+
 people:
   - Mom
   - Dad
@@ -63,6 +66,7 @@ stations:
 require_station_match: false
 require_key_for_launch: false
 cooldown_seconds: 30
+
 launches_before_mutual_destruction: 5
 chain_before_mutual_destruction: 4
 daily_reset_time: "05:00:00"
@@ -77,30 +81,37 @@ penalties:
 
 dns:
   enabled: true
-  provider: custom_services
+  provider: adguard_home
   enforcement_mode: active
   mutual_destruction_scope: default_targets
-  custom_services:
-    people:
+
+  adguard_home:
+    base_url: "http://192.168.1.11:3000"
+
+    # Recommended. Keep actual values in secrets.yaml.
+    username_secret: adguard_username
+    password_secret: adguard_password
+
+    # Optional direct values. Leave blank when using secrets.
+    username: ""
+    password: ""
+
+    rule_prefix: "Family DEFCON Block"
+
+    # These must match persistent client names in AdGuard Home.
+    clients:
       Mom:
-        block: {action: script.block_mom_internet}
-        unblock: {action: script.unblock_mom_internet}
+        client_name: Mom
+        enabled: true
       Dad:
-        block: {action: script.block_dad_internet}
-        unblock: {action: script.unblock_dad_internet}
+        client_name: Dad
+        enabled: true
       Henry:
-        block: {action: script.block_henry_internet}
-        unblock: {action: script.unblock_henry_internet}
+        client_name: Henry
+        enabled: true
       Marc:
-        block: {action: script.block_marc_internet}
-        unblock: {action: script.unblock_marc_internet}
+        client_name: Marc
+        enabled: true
       Maggie:
-        block: {action: script.block_maggie_internet}
-        unblock: {action: script.unblock_maggie_internet}
-    groups:
-      default_targets:
-        block: {action: script.block_all_kids_internet}
-        unblock: {action: script.unblock_all_kids_internet}
-      everyone:
-        block: {action: script.block_everyone_internet}
-        unblock: {action: script.unblock_everyone_internet}
+        client_name: Maggie
+        enabled: true

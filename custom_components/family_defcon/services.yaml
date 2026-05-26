@@ -36,12 +36,8 @@ launch_with_pin:
 
 clear_all:
   name: Clear All
-  description: Clear all DEFCON timeouts, counters, and active lockouts.
-
 stand_down:
   name: Stand Down
-  description: Reset the conflict chain without clearing active timeouts.
-
 set_armed:
   name: Set Armed
   fields:
@@ -49,7 +45,6 @@ set_armed:
       name: Enabled
       required: true
       selector: {boolean: {}}
-
 set_parent_targets:
   name: Set Parent Targets
   fields:
@@ -57,8 +52,21 @@ set_parent_targets:
       name: Enabled
       required: true
       selector: {boolean: {}}
-
 enforce_now:
   name: Enforce Now
 reload_config:
   name: Reload Config
+block_person:
+  name: Block Person
+  fields:
+    person:
+      name: Person
+      required: true
+      selector: {text: {}}
+unblock_person:
+  name: Unblock Person
+  fields:
+    person:
+      name: Person
+      required: true
+      selector: {text: {}}

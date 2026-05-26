@@ -1,51 +1,46 @@
-# Family DEFCON v0.6 PIN Mode
+# Family DEFCON v0.7
 
-GitHub ready Home Assistant custom integration for Family DEFCON.
+All variable data is now in `family_defcon.yaml`.
 
-## New in v0.6
+You no longer need `rest_commands.yaml` or `scripts.yaml` for AdGuard Home blocking.
 
-- `family_defcon.launch_with_pin`
-- Any person can use any terminal
-- PINs identify the commander
-- Shared station list
-- AdGuard Home REST command examples
-- Full scripts file
+## Configuration
 
-## Install
+Edit only:
 
-Copy `custom_components/family_defcon` to `/config/custom_components/family_defcon`.
+```text
+/config/family_defcon.yaml
+```
 
-Copy these files to `/config`:
+It contains:
 
-- `family_defcon.yaml`
-- `rest_commands.yaml`
-- `scripts.yaml`
+- people
+- default targets
+- parent targets
+- PINs
+- station names
+- AdGuard base URL
+- AdGuard client names
+- timeout penalties
+- escalation rules
+- daily reset time
 
-Add to `configuration.yaml`:
+## Home Assistant configuration.yaml
+
+Add:
 
 ```yaml
 family_defcon:
-rest_command: !include rest_commands.yaml
-script: !include scripts.yaml
 ```
 
-Add to `secrets.yaml`:
+## secrets.yaml
+
+Add:
 
 ```yaml
 adguard_username: your_adguard_username
 adguard_password: your_adguard_password
 ```
-
-Create toggle helpers:
-
-- `input_boolean.internet_block_mom`
-- `input_boolean.internet_block_dad`
-- `input_boolean.internet_block_henry`
-- `input_boolean.internet_block_marc`
-- `input_boolean.internet_block_maggie`
-- `input_boolean.internet_block_all_kids`
-
-Restart Home Assistant.
 
 ## Test
 
@@ -54,8 +49,6 @@ action: family_defcon.set_armed
 data:
   enabled: true
 ```
-
-Then:
 
 ```yaml
 action: family_defcon.launch_with_pin
@@ -73,4 +66,29 @@ Default PINs:
 - Marc: 4444
 - Maggie: 5555
 
-Change these before real use.
+Change these before using.
+
+## AdGuard
+
+Create persistent clients in AdGuard Home:
+
+- Mom
+- Dad
+- Henry
+- Marc
+- Maggie
+
+The integration creates/removes client specific block rules like:
+
+```text
+||*^$client='Henry'
+```
+
+## Upgrade note
+
+If you used v0.6 with `rest_commands.yaml` and block scripts, you can leave those files alone, but they are no longer required when:
+
+```yaml
+dns:
+  provider: adguard_home
+```

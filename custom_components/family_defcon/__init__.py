@@ -1,4 +1,8 @@
-"""Family DEFCON custom integration with PIN mode."""
+"""Family DEFCON custom integration.
+
+v0.7 moves variable data into family_defcon.yaml:
+people, targets, PINs, stations, AdGuard URL, client names, penalties, timers, and DNS behavior.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +11,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 import yaml
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -42,23 +48,31 @@ LAUNCH_WITH_PIN_SCHEMA = vol.Schema({
 })
 
 BOOL_SCHEMA = vol.Schema({vol.Required("enabled"): cv.boolean})
+PERSON_SCHEMA = vol.Schema({vol.Required("person"): cv.string})
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up Family DEFCON."""
     hass.data.setdefault(DOMAIN, {})
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
-    def load_config() -> dict:
-        path = Path(hass.config.path(CONFIG_PATH))
+    def load_yaml(filename: str) -> dict:
+        path = Path(hass.config.path(filename))
         if not path.exists():
-            _LOGGER.warning("Family DEFCON config file not found at %s. Using defaults.", path)
             return {}
         try:
             loaded = yaml.safe_load(path.read_text()) or {}
             return loaded if isinstance(loaded, dict) else {}
         except Exception as err:
-            _LOGGER.error("Unable to load Family DEFCON config: %s", err)
+            _LOGGER.error("Family DEFCON could not load %s: %s", filename, err)
             return {}
+
+    def get_secret(secret_name: str, default: str = "") -> str:
+        if not secret_name:
+            return default
+        secrets = load_yaml("secrets.yaml")
+        value = secrets.get(secret_name, default)
+        return "" if value is None else str(value)
 
     def normalize_config(raw: dict) -> dict:
         people = list(raw.get("people", DEFAULT_PEOPLE))
@@ -67,25 +81,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         penalties = raw.get("penalties", {}) if isinstance(raw.get("penalties", {}), dict) else {}
         auth = raw.get("auth", {}) if isinstance(raw.get("auth", {}), dict) else {}
         dns = raw.get("dns", {}) if isinstance(raw.get("dns", {}), dict) else {}
-        users = auth.get("users", {}) if isinstance(auth.get("users", {}), dict) else {}
-        stations_in = raw.get("stations", {}) if isinstance(raw.get("stations", {}), dict) else {}
+        adguard = dns.get("adguard_home", {}) if isinstance(dns.get("adguard_home", {}), dict) else {}
 
+        stations_in = raw.get("stations", {}) if isinstance(raw.get("stations", {}), dict) else {}
         stations = {}
         for station_id, station_data in stations_in.items():
             if isinstance(station_data, dict):
                 stations[str(station_id)] = {
-                    "name": station_data.get("name", str(station_id)),
-                    "commander": station_data.get("commander", ""),
+                    "name": str(station_data.get("name", station_id)),
+                    "commander": str(station_data.get("commander", "")),
                     "enabled": bool(station_data.get("enabled", True)),
-                    "key_entity": station_data.get("key_entity", ""),
+                    "key_entity": str(station_data.get("key_entity", "")),
+                }
+
+        users = auth.get("users", {}) if isinstance(auth.get("users", {}), dict) else {}
+        clients_in = adguard.get("clients", {}) if isinstance(adguard.get("clients", {}), dict) else {}
+        clients = {}
+        for person in people:
+            entry = clients_in.get(person, person)
+            if isinstance(entry, dict):
+                clients[person] = {
+                    "client_name": str(entry.get("client_name", person)),
+                    "enabled": bool(entry.get("enabled", True)),
                 }
             else:
-                stations[str(station_id)] = {
-                    "name": str(station_data),
-                    "commander": "",
-                    "enabled": True,
-                    "key_entity": "",
-                }
+                clients[person] = {"client_name": str(entry), "enabled": True}
 
         return {
             "people": people,
@@ -114,10 +134,29 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "users": users,
             },
             "stations": stations,
-            "dns": dns,
+            "dns": {
+                "enabled": bool(dns.get("enabled", False)),
+                "provider": str(dns.get("provider", "none")),
+                "enforcement_mode": str(dns.get("enforcement_mode", "disabled")),
+                "mutual_destruction_scope": str(dns.get("mutual_destruction_scope", "default_targets")),
+                "custom_services": dns.get("custom_services", {}) if isinstance(dns.get("custom_services", {}), dict) else {},
+                "adguard_home": {
+                    "base_url": str(adguard.get("base_url", "")).rstrip("/"),
+                    "username": str(adguard.get("username", "")),
+                    "password": str(adguard.get("password", "")),
+                    "username_secret": str(adguard.get("username_secret", "")),
+                    "password_secret": str(adguard.get("password_secret", "")),
+                    "rule_prefix": str(adguard.get("rule_prefix", "Family DEFCON Block")),
+                    "clients": clients,
+                },
+            },
         }
 
-    hass.data[DOMAIN]["config"] = normalize_config(load_config())
+    raw = load_yaml(CONFIG_PATH)
+    if not raw:
+        _LOGGER.warning("Family DEFCON config missing or empty at %s.", hass.config.path(CONFIG_PATH))
+    hass.data[DOMAIN]["config"] = normalize_config(raw)
+
     stored = await store.async_load() or {}
     people = hass.data[DOMAIN]["config"]["people"]
 
@@ -136,6 +175,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "pin_locked_until": dict(stored.get("pin_locked_until", {})),
         "blocked_until": {person: None for person in people},
         "last_reset_date": str(stored.get("last_reset_date", "")),
+        "adguard_applied": dict(stored.get("adguard_applied", {})),
     }
 
     for person, value in stored.get("blocked_until", {}).items():
@@ -155,25 +195,25 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return hass.data[DOMAIN]["state"]
 
     async def save_state() -> None:
-        data = dict(st())
-        data["blocked_until"] = {
+        payload = dict(st())
+        payload["blocked_until"] = {
             person: value.isoformat() if isinstance(value, datetime) else None
             for person, value in st()["blocked_until"].items()
         }
-        await store.async_save(data)
+        await store.async_save(payload)
 
     async def update_entities() -> None:
         async_dispatcher_send(hass, SIGNAL_UPDATE)
 
     async def log_event(message: str) -> None:
         st()["last_event"] = message
-        log = st().setdefault("event_log", [])
-        log.insert(0, {"time": datetime.now().isoformat(timespec="seconds"), "message": message})
-        del log[conf()["max_event_log"]:]
+        event_log = st().setdefault("event_log", [])
+        event_log.insert(0, {"time": datetime.now().isoformat(timespec="seconds"), "message": message})
+        del event_log[conf()["max_event_log"]:]
         await save_state()
         await update_entities()
 
-    def targets() -> list[str]:
+    def valid_targets() -> list[str]:
         if st()["allow_parent_targets"]:
             return list(dict.fromkeys(conf()["default_targets"] + conf()["parent_targets"]))
         return conf()["default_targets"]
@@ -184,7 +224,60 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         until = st()["blocked_until"].get(person)
         return isinstance(until, datetime) and until > datetime.now()
 
-    async def call_action(action_def: dict[str, Any] | None) -> None:
+    def adguard_rule(person: str) -> tuple[str, str] | None:
+        adguard = conf()["dns"]["adguard_home"]
+        client = adguard["clients"].get(person)
+        if not client or not client.get("enabled", True):
+            return None
+        client_name = client["client_name"]
+        return f"{adguard['rule_prefix']} {person}", f"||*^$client='{client_name}'"
+
+    async def adguard_call(path: str, payload: dict[str, Any]) -> bool:
+        adguard = conf()["dns"]["adguard_home"]
+        base_url = adguard["base_url"]
+        if not base_url:
+            _LOGGER.error("Family DEFCON AdGuard base_url is blank.")
+            return False
+
+        username = adguard["username"] or get_secret(adguard["username_secret"])
+        password = adguard["password"] or get_secret(adguard["password_secret"])
+        auth = aiohttp.BasicAuth(username, password) if username or password else None
+
+        session = async_get_clientsession(hass)
+        try:
+            async with session.post(f"{base_url}{path}", json=payload, auth=auth, timeout=10) as resp:
+                if resp.status in (200, 204):
+                    return True
+                text = await resp.text()
+                _LOGGER.warning("Family DEFCON AdGuard call failed: %s %s %s", path, resp.status, text)
+                return False
+        except Exception as err:
+            _LOGGER.error("Family DEFCON AdGuard call error: %s %s", path, err)
+            return False
+
+    async def adguard_set(person: str, should_block: bool) -> None:
+        rule_data = adguard_rule(person)
+        if rule_data is None:
+            return
+        filter_name, rule = rule_data
+        applied = bool(st().setdefault("adguard_applied", {}).get(person, False))
+
+        if should_block and not applied:
+            ok = await adguard_call("/control/filtering/add_url", {
+                "name": filter_name,
+                "url": f"data:text/plain,{rule}",
+            })
+            if ok:
+                st()["adguard_applied"][person] = True
+
+        elif not should_block and applied:
+            ok = await adguard_call("/control/filtering/remove_url", {
+                "url": f"data:text/plain,{rule}",
+            })
+            if ok:
+                st()["adguard_applied"][person] = False
+
+    async def call_custom_action(action_def: dict[str, Any] | None) -> None:
         if not isinstance(action_def, dict):
             return
         action = action_def.get("action") or action_def.get("service")
@@ -198,29 +291,40 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await hass.services.async_call(domain, service, service_data, blocking=False)
 
     async def enforce_now() -> None:
-        dns = conf().get("dns", {})
-        if not dns.get("enabled") or dns.get("enforcement_mode") != "active":
+        dns = conf()["dns"]
+        if not dns["enabled"] or dns["enforcement_mode"] != "active":
             return
-        custom = dns.get("custom_services", {})
-        people_actions = custom.get("people", {})
-        groups = custom.get("groups", {})
-        if st()["mutual_destruction"]:
-            scope = dns.get("mutual_destruction_scope", "default_targets")
-            group_action = groups.get(scope, {}).get("block")
-            if group_action:
-                await call_action(group_action)
-                return
-        for person in conf()["people"]:
-            actions = people_actions.get(person, {})
-            await call_action(actions.get("block") if is_blocked(person) else actions.get("unblock"))
+
+        provider = dns["provider"]
+
+        if provider == "adguard_home":
+            for person in conf()["people"]:
+                await adguard_set(person, is_blocked(person))
+            await save_state()
+            await update_entities()
+            return
+
+        if provider == "custom_services":
+            custom = dns["custom_services"]
+            people_actions = custom.get("people", {})
+            groups = custom.get("groups", {})
+            if st()["mutual_destruction"]:
+                scope = dns.get("mutual_destruction_scope", "default_targets")
+                group_action = groups.get(scope, {}).get("block")
+                if group_action:
+                    await call_custom_action(group_action)
+                    return
+            for person in conf()["people"]:
+                actions = people_actions.get(person, {})
+                await call_custom_action(actions.get("block") if is_blocked(person) else actions.get("unblock"))
 
     def station_record(station: str):
         stations = conf()["stations"]
         if station in stations:
             return station, stations[station]
-        for sid, record in stations.items():
+        for station_id, record in stations.items():
             if record.get("name") == station:
-                return sid, record
+                return station_id, record
         return station, None
 
     async def validate_station(launcher: str, station: str) -> tuple[bool, str]:
@@ -266,20 +370,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if launcher not in conf()["people"]:
             await log_event(f"Launch rejected. Unknown launcher {launcher}.")
             return
-        if target not in targets():
+        if target not in valid_targets():
             await log_event(f"Launch rejected. {target} is protected.")
             return
         if launcher == target:
             await log_event("Launch rejected. Self targeting is not allowed.")
             return
+
         ok, reason = await validate_station(launcher, station)
         if not ok:
             await log_event(reason)
             return
 
         new_launches = st()["daily_launches"] + 1
-        retaliation = launcher == st()["last_target"] and target == st()["last_launcher"]
-        new_chain = st()["conflict_chain"] + 1 if retaliation else 1
+        is_retaliation = launcher == st()["last_target"] and target == st()["last_launcher"]
+        new_chain = st()["conflict_chain"] + 1 if is_retaliation else 1
 
         st()["daily_launches"] = new_launches
         st()["conflict_chain"] = new_chain
@@ -373,8 +478,22 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await log_event("Enforcement reapplied.")
 
     async def handle_reload_config(call: ServiceCall) -> None:
-        hass.data[DOMAIN]["config"] = normalize_config(load_config())
+        hass.data[DOMAIN]["config"] = normalize_config(load_yaml(CONFIG_PATH))
         await log_event("Config reloaded.")
+
+    async def handle_block_person(call: ServiceCall) -> None:
+        person = call.data["person"]
+        if person in conf()["people"]:
+            await add_timeout(person, 999 * 60)
+            await log_event(f"{person} manually blocked.")
+            await enforce_now()
+
+    async def handle_unblock_person(call: ServiceCall) -> None:
+        person = call.data["person"]
+        if person in conf()["people"]:
+            st()["blocked_until"][person] = None
+            await log_event(f"{person} manually unblocked.")
+            await enforce_now()
 
     hass.services.async_register(DOMAIN, "launch", handle_launch, schema=LAUNCH_SCHEMA)
     hass.services.async_register(DOMAIN, "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
@@ -384,6 +503,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "set_parent_targets", handle_set_parent_targets, schema=BOOL_SCHEMA)
     hass.services.async_register(DOMAIN, "enforce_now", handle_enforce_now)
     hass.services.async_register(DOMAIN, "reload_config", handle_reload_config)
+    hass.services.async_register(DOMAIN, "block_person", handle_block_person, schema=PERSON_SCHEMA)
+    hass.services.async_register(DOMAIN, "unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
 
     async def periodic(now: datetime) -> None:
         today = datetime.now().date().isoformat()

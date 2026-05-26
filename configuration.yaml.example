@@ -1,5 +1,3 @@
 # Add to configuration.yaml
 
 family_defcon:
-rest_command: !include rest_commands.yaml
-script: !include scripts.yaml
