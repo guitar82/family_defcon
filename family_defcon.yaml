@@ -1,5 +1,5 @@
 # Family DEFCON example configuration.
-# Copy this file to /config/family_defcon.yaml and edit for your family.
+# Copy this file to /config/family_defcon.yaml and edit it for your family.
 
 people:
   - Parent 1
@@ -21,7 +21,6 @@ allow_parent_targets_default: false
 
 auth:
   mode: pin
-  pin_timeout_seconds: 60
   max_bad_pin_attempts: 3
   lockout_seconds_after_bad_pins: 120
   users:
@@ -49,11 +48,6 @@ stations:
 
   station_1:
     name: Kitchen DEFCON Terminal
-    enabled: true
-    key_entity: ""
-
-  station_2:
-    name: Living Room DEFCON Terminal
     enabled: true
     key_entity: ""
 

@@ -54,6 +54,7 @@ BOOL_SCHEMA = vol.Schema({vol.Required("enabled"): cv.boolean})
 PERSON_SCHEMA = vol.Schema({vol.Required("person"): cv.string})
 DASHBOARD_KEYPRESS_SCHEMA = vol.Schema({vol.Required("digit"): cv.string})
 DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
+DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
 
 
 
@@ -605,22 +606,39 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         digit = str(call.data["digit"])
         if digit not in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
             return
-        current = str(st().get("dashboard_pin", ""))
-        st()["dashboard_pin"] = (current + digit)[-12:]
+        current = "".join(ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit())
+        if len(current) >= 4:
+            return
+        st()["dashboard_pin"] = current + digit
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_backspace(call: ServiceCall) -> None:
-        current = str(st().get("dashboard_pin", ""))
+        current = "".join(ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit())
         st()["dashboard_pin"] = current[:-1]
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_clear_pin(call: ServiceCall) -> None:
         st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_set_pin(call: ServiceCall) -> None:
-        pin = str(call.data["pin"])
-        st()["dashboard_pin"] = pin[-12:]
+        pin = "".join(ch for ch in str(call.data["pin"]) if ch.isdigit())
+        st()["dashboard_pin"] = pin[:4]
+        st()["dashboard_confirm"] = False
+        await update_entities()
+
+    async def handle_dashboard_select_target(call: ServiceCall) -> None:
+        target = str(call.data["target"])
+        targets = dashboard_targets()
+        if target not in targets:
+            await log_event(f"Dashboard target rejected. {target} is not in dashboard targets.")
+            return
+        st()["dashboard_target"] = target
+        st()["dashboard_confirm"] = False
+        await save_state()
         await update_entities()
 
     def dashboard_config() -> dict:
@@ -703,6 +721,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "dashboard_backspace", handle_dashboard_backspace)
     hass.services.async_register(DOMAIN, "dashboard_clear_pin", handle_dashboard_clear_pin)
     hass.services.async_register(DOMAIN, "dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
+    hass.services.async_register(DOMAIN, "dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
 
     async def periodic(now: datetime) -> None:
         today = datetime.now().date().isoformat()

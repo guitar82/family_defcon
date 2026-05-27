@@ -1,1 +1,9 @@
-Family DEFCON adds a configurable family DEFCON style WiFi timeout system with AdGuard Home enforcement and a dashboard keypad.
+# Family DEFCON
+
+Family DEFCON is a Home Assistant custom integration for a playful family WiFi timeout system with a DEFCON style dashboard, 4 digit PIN keypad, configurable targets, and AdGuard Home enforcement.
+
+Install through HACS, then add the integration from Home Assistant:
+
+Settings → Devices & services → Add integration → Family DEFCON
+
+Advanced family/game configuration stays in `/config/family_defcon.yaml`.

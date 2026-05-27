@@ -17,7 +17,7 @@ class DashboardPinText(TextEntity):
     _attr_unique_id = "family_defcon_dashboard_pin"
     _attr_has_entity_name = False
     _attr_mode = "password"
-    _attr_native_max = 12
+    _attr_native_max = 4
     _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -28,8 +28,9 @@ class DashboardPinText(TextEntity):
         return str(self.hass.data[DOMAIN]["state"].get("dashboard_pin", ""))
 
     async def async_set_value(self, value: str) -> None:
-        clean = "".join(ch for ch in str(value) if ch.isdigit())[-12:]
+        clean = "".join(ch for ch in str(value) if ch.isdigit())[:4]
         self.hass.data[DOMAIN]["state"]["dashboard_pin"] = clean
+        self.hass.data[DOMAIN]["state"]["dashboard_confirm"] = False
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:

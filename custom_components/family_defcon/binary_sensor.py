@@ -14,3 +14,25 @@ class MutualDestructionBinarySensor(BinarySensorEntity):
     @property
     def is_on(self): return bool(self.hass.data[DOMAIN]["state"]["mutual_destruction"])
     async def async_added_to_hass(self): self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state))
+
+
+class DashboardTargetConfirmedSensor(BinarySensorEntity):
+    """Dashboard target confirmed state."""
+
+    _attr_name = "Family DEFCON Dashboard Target Confirmed"
+    _attr_unique_id = "family_defcon_dashboard_target_confirmed"
+    _attr_has_entity_name = False
+    _attr_icon = "mdi:target-account"
+    _attr_should_poll = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.hass.data[DOMAIN]["state"].get("dashboard_confirm", False))
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+        )
