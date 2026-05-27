@@ -1,0 +1,116 @@
+launch:
+  name: Launch
+  description: Launch using a fixed launcher name.
+  fields:
+    launcher:
+      name: Launcher
+      required: true
+      selector: {text: {}}
+    target:
+      name: Target
+      required: true
+      selector: {text: {}}
+    station:
+      name: Station
+      required: false
+      selector: {text: {}}
+
+launch_with_pin:
+  name: Launch with PIN
+  description: Launch from any terminal using a user's PIN.
+  fields:
+    pin:
+      name: PIN
+      required: true
+      selector:
+        text:
+          type: password
+    target:
+      name: Target
+      required: true
+      selector: {text: {}}
+    station:
+      name: Station
+      required: false
+      selector: {text: {}}
+
+clear_all:
+  name: Clear All
+stand_down:
+  name: Stand Down
+set_armed:
+  name: Set Armed
+  fields:
+    enabled:
+      name: Enabled
+      required: true
+      selector: {boolean: {}}
+set_parent_targets:
+  name: Set Parent Targets
+  fields:
+    enabled:
+      name: Enabled
+      required: true
+      selector: {boolean: {}}
+enforce_now:
+  name: Enforce Now
+reload_config:
+  name: Reload Config
+block_person:
+  name: Block Person
+  fields:
+    person:
+      name: Person
+      required: true
+      selector: {text: {}}
+unblock_person:
+  name: Unblock Person
+  fields:
+    person:
+      name: Person
+      required: true
+      selector: {text: {}}
+
+
+
+
+
+dashboard_keypress:
+  name: Dashboard Keypress
+  description: Add one digit to the dashboard PIN entry.
+  fields:
+    digit:
+      name: Digit
+      required: true
+      selector:
+        select:
+          options:
+            - "0"
+            - "1"
+            - "2"
+            - "3"
+            - "4"
+            - "5"
+            - "6"
+            - "7"
+            - "8"
+            - "9"
+
+dashboard_backspace:
+  name: Dashboard Backspace
+  description: Remove the last digit from the dashboard PIN entry.
+
+dashboard_clear_pin:
+  name: Dashboard Clear PIN
+  description: Clear the dashboard PIN entry.
+
+dashboard_set_pin:
+  name: Dashboard Set PIN
+  description: Set the dashboard PIN entry.
+  fields:
+    pin:
+      name: PIN
+      required: true
+      selector:
+        text:
+          type: password
