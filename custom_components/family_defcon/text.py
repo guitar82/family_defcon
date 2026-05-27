@@ -19,6 +19,7 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
 class DashboardPinText(TextEntity):
     _attr_name = "Dashboard PIN"
     _attr_unique_id = "family_defcon_dashboard_pin"
+    _attr_suggested_object_id = "family_defcon_dashboard_pin"
     _attr_has_entity_name = True
     _attr_mode = "password"
     _attr_native_max = 4

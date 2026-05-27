@@ -36,7 +36,7 @@ class Base(SensorEntity):
     async def async_added_to_hass(self): self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state))
 
 class DefconLevelSensor(Base):
-    _attr_name = "Level"; _attr_unique_id = "family_defcon_level"
+    _attr_name = "Level"; _attr_unique_id = "family_defcon_level"; _attr_suggested_object_id = "family_defcon_level"
 
     def _is_person_blocked(self, person: str) -> bool:
         if self.s["mutual_destruction"]:
@@ -75,32 +75,32 @@ class DefconLevelSensor(Base):
         return 5
 
 class PeaceStatusSensor(Base):
-    _attr_name = "Peace Status"; _attr_unique_id = "family_defcon_peace_status"
+    _attr_name = "Peace Status"; _attr_unique_id = "family_defcon_peace_status"; _attr_suggested_object_id = "family_defcon_peace_status"
     @property
     def native_value(self): return {1:"Mutual WiFi Destruction",2:"Red",3:"Yellow",4:"Watch",5:"Green"}.get(DefconLevelSensor(self.hass).native_value, "Unknown")
 
 class DailyLaunchesSensor(Base):
-    _attr_name = "Daily Launches"; _attr_unique_id = "family_defcon_daily_launches"
+    _attr_name = "Daily Launches"; _attr_unique_id = "family_defcon_daily_launches"; _attr_suggested_object_id = "family_defcon_daily_launches"
     @property
     def native_value(self): return int(self.s["daily_launches"])
 
 class ConflictChainSensor(Base):
-    _attr_name = "Conflict Chain"; _attr_unique_id = "family_defcon_conflict_chain"
+    _attr_name = "Conflict Chain"; _attr_unique_id = "family_defcon_conflict_chain"; _attr_suggested_object_id = "family_defcon_conflict_chain"
     @property
     def native_value(self): return int(self.s["conflict_chain"])
 
 class LastLauncherSensor(Base):
-    _attr_name = "Last Launcher"; _attr_unique_id = "family_defcon_last_launcher"
+    _attr_name = "Last Launcher"; _attr_unique_id = "family_defcon_last_launcher"; _attr_suggested_object_id = "family_defcon_last_launcher"
     @property
     def native_value(self): return self.s["last_launcher"]
 
 class LastTargetSensor(Base):
-    _attr_name = "Last Target"; _attr_unique_id = "family_defcon_last_target"
+    _attr_name = "Last Target"; _attr_unique_id = "family_defcon_last_target"; _attr_suggested_object_id = "family_defcon_last_target"
     @property
     def native_value(self): return self.s["last_target"]
 
 class LastEventSensor(Base):
-    _attr_name = "Last Event"; _attr_unique_id = "family_defcon_last_event"
+    _attr_name = "Last Event"; _attr_unique_id = "family_defcon_last_event"; _attr_suggested_object_id = "family_defcon_last_event"
     @property
     def native_value(self): return self.s["last_event"]
     @property
@@ -118,7 +118,7 @@ def _entity_slug(name: str) -> str:
 
 
 class AdGuardStatusSensor(Base):
-    _attr_name = "AdGuard Status"; _attr_unique_id = "family_defcon_adguard_status"
+    _attr_name = "AdGuard Status"; _attr_unique_id = "family_defcon_adguard_status"; _attr_suggested_object_id = "family_defcon_adguard_status"
     @property
     def native_value(self): return self.s.get("adguard_last_status", "unknown")
     @property
@@ -130,17 +130,17 @@ class AdGuardStatusSensor(Base):
         }
 
 class AdGuardLastSyncSensor(Base):
-    _attr_name = "AdGuard Last Sync"; _attr_unique_id = "family_defcon_adguard_last_sync"
+    _attr_name = "AdGuard Last Sync"; _attr_unique_id = "family_defcon_adguard_last_sync"; _attr_suggested_object_id = "family_defcon_adguard_last_sync"
     @property
     def native_value(self): return self.s.get("adguard_last_sync", "")
 
 class AdGuardLastErrorSensor(Base):
-    _attr_name = "AdGuard Last Error"; _attr_unique_id = "family_defcon_adguard_last_error"
+    _attr_name = "AdGuard Last Error"; _attr_unique_id = "family_defcon_adguard_last_error"; _attr_suggested_object_id = "family_defcon_adguard_last_error"
     @property
     def native_value(self): return self.s.get("adguard_last_error", "")
 
 class AdGuardManagedRuleCountSensor(Base):
-    _attr_name = "AdGuard Managed Rule Count"; _attr_unique_id = "family_defcon_adguard_managed_rule_count"
+    _attr_name = "AdGuard Managed Rule Count"; _attr_unique_id = "family_defcon_adguard_managed_rule_count"; _attr_suggested_object_id = "family_defcon_adguard_managed_rule_count"
     @property
     def native_value(self): return int(self.s.get("adguard_managed_rule_count", 0))
 
@@ -148,6 +148,7 @@ class AdGuardManagedRuleCountSensor(Base):
 class DashboardPeopleSensor(Base):
     _attr_name = "Dashboard People"
     _attr_unique_id = "family_defcon_dashboard_people"
+    _attr_suggested_object_id = "family_defcon_dashboard_people"
 
     @property
     def native_value(self):
@@ -160,8 +161,8 @@ class DashboardPeopleSensor(Base):
             slug = _entity_slug(person)
             people.append({
                 "name": person,
-                "status_entity": f"sensor.{slug}_wifi_status",
-                "minutes_entity": f"sensor.{slug}_wifi_minutes_remaining",
+                "status_entity": f"sensor.family_defcon_{slug}_wifi_status",
+                "minutes_entity": f"sensor.family_defcon_{slug}_wifi_minutes_remaining",
                 "is_default_target": person in self.c.get("default_targets", []),
                 "is_parent_target": person in self.c.get("parent_targets", []),
             })
@@ -172,7 +173,7 @@ class PersonWifiStatusSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass); self.person = person
         slug = _entity_slug(person)
-        self._attr_name = f"{person} WiFi Status"; self._attr_unique_id = f"family_defcon_{slug}_wifi_status"
+        self._attr_name = f"{person} WiFi Status"; self._attr_unique_id = f"family_defcon_{slug}_wifi_status"; self._attr_suggested_object_id = f"family_defcon_{slug}_wifi_status"
     def _mutual_blocks_person(self) -> bool:
         if not self.s["mutual_destruction"]:
             return False
@@ -191,7 +192,7 @@ class PersonMinutesRemainingSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass); self.person = person
         slug = _entity_slug(person)
-        self._attr_name = f"{person} WiFi Minutes Remaining"; self._attr_unique_id = f"family_defcon_{slug}_wifi_minutes_remaining"; self._attr_native_unit_of_measurement = "min"
+        self._attr_name = f"{person} WiFi Minutes Remaining"; self._attr_unique_id = f"family_defcon_{slug}_wifi_minutes_remaining"; self._attr_suggested_object_id = f"family_defcon_{slug}_wifi_minutes_remaining"; self._attr_native_unit_of_measurement = "min"
     def _mutual_blocks_person(self) -> bool:
         if not self.s["mutual_destruction"]:
             return False

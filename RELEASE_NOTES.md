@@ -1,5 +1,32 @@
 # Family DEFCON Release Notes
 
+## v5.8.12
+
+- Fixed privacy issue where internal dashboard PIN could be saved to persistent storage.
+- Dashboard confirmation is now always cleared on restart and reload.
+- UI options update listener now calls reload_config instead of a no-op config entry reload.
+- Fixed People options form so dashboard target checkboxes respect saved settings.
+- Legacy dashboard launch helper now supports hashed PIN verification.
+- Updated hash_pin service description for fast SHA256 hashes.
+- Preserved dynamic target buttons, hidden PIN entity state, instant PIN verification, and native HA events.
+
+## v5.8.11 Pre-release audit fixes
+
+- Added deterministic suggested object IDs to core dashboard entities.
+- Added deterministic family_defcon-prefixed entity IDs for person WiFi sensors.
+- Updated dashboard people sensor attributes to point to deterministic person sensor IDs.
+- Added target metadata attributes to dynamic target buttons.
+- Updated dynamic dashboard example to use target attributes instead of parsing friendly names.
+- Added dispatcher update when selecting dashboard target from the select dropdown.
+- Preserved v5.8.10 dynamic button ID fix and stable v5.8.x backend.
+
+## v5.8.10
+
+- Fixed generated target button entity IDs by adding suggested object IDs.
+- Dynamic target buttons now reliably appear as `button.family_defcon_select_target_*` on new installs.
+- Added deterministic suggested object IDs to core dashboard buttons too.
+- Preserved v5.8.9 public beta cleanup, hidden PIN state, instant PIN verification, and native HA events.
+
 ## v5.8.9 Clean Public Beta
 
 - Built from the stable v5.8.x dynamic line.

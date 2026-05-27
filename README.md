@@ -354,3 +354,76 @@ action: family_defcon.enforce_now
 ### Home Assistant custom integration warning
 
 Home Assistant shows a warning for custom integrations. That warning is normal and does not mean Family DEFCON is broken.
+
+
+## v5.8.10 Dynamic Button Entity ID Fix
+
+v5.8.10 fixes dynamic target button entity IDs for new installs.
+
+The generated target buttons now explicitly request entity IDs like:
+
+```text
+button.family_defcon_select_target_child_1
+button.family_defcon_select_target_parent_1
+```
+
+This makes the dynamic dashboard filter reliable:
+
+```text
+button.family_defcon_select_target_*
+```
+
+After installing or updating:
+
+```text
+Restart Home Assistant
+Search Developer Tools → States for family_defcon_select_target
+```
+
+If Home Assistant previously created different entity IDs for the same unique IDs, delete the old Family DEFCON target button entities from the entity registry or remove/re-add the integration.
+
+
+## v5.8.11 Pre-release audit fixes
+
+This build fixes issues found during a full package audit before UI polish work.
+
+Fixes:
+
+```text
+Deterministic suggested_object_id added to core dashboard entities
+Person WiFi status/minutes sensors now use deterministic family_defcon-prefixed entity IDs
+sensor.family_defcon_dashboard_people now points to those deterministic person sensor IDs
+Dynamic target button entities expose target metadata as attributes
+Dynamic target dashboard uses entity.attributes.target instead of parsing friendly names
+select.family_defcon_dashboard_target now dispatches updates when changed from the dropdown
+```
+
+Expected entity IDs on a clean install include:
+
+```text
+sensor.family_defcon_dashboard_people
+text.family_defcon_dashboard_pin
+select.family_defcon_dashboard_target
+button.family_defcon_select_target_child_1
+sensor.family_defcon_child_1_wifi_status
+sensor.family_defcon_child_1_wifi_minutes_remaining
+```
+
+If upgrading from an older test build, old entity IDs may remain in Home Assistant's entity registry. Remove the old Family DEFCON entities from Settings → Devices & services → Entities, or remove/re-add the integration, then restart Home Assistant.
+
+
+## v5.8.12 Privacy and Config Reload Fixes
+
+v5.8.12 fixes several pre-release audit items:
+
+```text
+Live dashboard PIN is never saved to persistent storage
+Dashboard confirmed state is never restored after restart
+UI options save now applies reload_config when possible
+People/target changes still require restart so generated entities can be recreated
+Dashboard target checkbox defaults now respect saved UI settings
+Legacy dashboard PIN helper now supports hashed PINs
+hash_pin service description now matches the current fast SHA256 hash format
+```
+
+After changing people names or dashboard target membership in the UI, restart Home Assistant.

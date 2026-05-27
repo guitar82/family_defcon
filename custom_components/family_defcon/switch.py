@@ -16,14 +16,14 @@ class BaseSwitch(SwitchEntity):
     async def async_added_to_hass(self): self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state))
 
 class ArmedSwitch(BaseSwitch):
-    _attr_name = "Command System Armed"; _attr_unique_id = "family_defcon_command_system_armed"
+    _attr_name = "Command System Armed"; _attr_unique_id = "family_defcon_command_system_armed"; _attr_suggested_object_id = "family_defcon_command_system_armed"
     @property
     def is_on(self): return bool(self.s["armed"])
     async def async_turn_on(self, **kwargs): await self.hass.services.async_call(DOMAIN, "set_armed", {"enabled": True}, blocking=False)
     async def async_turn_off(self, **kwargs): await self.hass.services.async_call(DOMAIN, "set_armed", {"enabled": False}, blocking=False)
 
 class AllowParentTargetsSwitch(BaseSwitch):
-    _attr_name = "Allow Parent Targets"; _attr_unique_id = "family_defcon_allow_parent_targets"
+    _attr_name = "Allow Parent Targets"; _attr_unique_id = "family_defcon_allow_parent_targets"; _attr_suggested_object_id = "family_defcon_allow_parent_targets"
     @property
     def is_on(self): return bool(self.s["allow_parent_targets"])
     async def async_turn_on(self, **kwargs): await self.hass.services.async_call(DOMAIN, "set_parent_targets", {"enabled": True}, blocking=False)

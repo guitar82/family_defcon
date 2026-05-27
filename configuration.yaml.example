@@ -1,0 +1,5 @@
+# Family DEFCON can be installed from the UI.
+# For UI setup, do not add family_defcon: here.
+#
+# Legacy YAML setup, only if you are not using the UI:
+# family_defcon:

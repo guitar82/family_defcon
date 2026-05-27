@@ -1,13 +1,17 @@
-Family DEFCON v5.8.9 Clean Public Beta verification
-Base package: stable v5.8.x dynamic line
+Family DEFCON v5.8.12 Privacy and Config Reload Fixes verification
+Base package: v5.8.11 pre-release audit fixes
 Python compile: OK
-manifest version 5.8.9: OK
-UI-first README added: OK
-No active demo PINs in YAML backup example: OK
-Dynamic target dashboard promoted: OK
-Legacy hardcoded examples moved aside if present: OK
+manifest version 5.8.12: OK
+dashboard_pin is never persisted to storage: OK
+dashboard_confirm is never restored after restart: OK
+dashboard_confirm is never persisted as true: OK
+UI option updates call reload_config service: OK
+User notification explains restart needed for people/target entity changes: OK
+People form dashboard target defaults respect saved settings: OK
+Legacy dashboard launch helper verifies SHA256/PBKDF2 hashes: OK
+hash_pin service description updated to SHA256: OK
 Dynamic target button entities preserved: OK
-Hidden dashboard PIN state preserved: OK
+Hidden dashboard PIN entity state preserved: OK
 Instant SHA256 PIN verification preserved: OK
 Native HA events preserved: OK
 No v5.9 dashboard auth sensor code carried over: OK

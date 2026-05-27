@@ -151,9 +151,21 @@ class DashboardSelectTargetButton(BaseDashboardButton):
         super().__init__(hass)
         self.target_name = str(target_name)
         self.target_slug = _slugify_target(self.target_name)
+        object_id = f"family_defcon_select_target_{self.target_slug}"
         self._attr_name = f"Select Target {self.target_name}"
-        self._attr_unique_id = f"family_defcon_select_target_{self.target_slug}"
+        self._attr_unique_id = object_id
+        self._attr_suggested_object_id = object_id
         self._attr_icon = "mdi:account-crosshairs"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose configured target metadata for dynamic dashboard cards."""
+        return {
+            "target": self.target_name,
+            "target_slug": self.target_slug,
+            "is_default_target": self.target_name in self.config_data.get("default_targets", []),
+            "is_parent_target": self.target_name in self.config_data.get("parent_targets", []),
+        }
 
     @property
     def available(self) -> bool:
@@ -174,6 +186,7 @@ class DashboardSelectTargetButton(BaseDashboardButton):
 class DashboardConfirmButton(BaseDashboardButton):
     _attr_name = "Dashboard Confirm Targeting"
     _attr_unique_id = "family_defcon_dashboard_confirm_targeting"
+    _attr_suggested_object_id = "family_defcon_dashboard_confirm_targeting"
     _attr_icon = "mdi:target"
 
     async def async_press(self) -> None:
@@ -221,6 +234,7 @@ class DashboardConfirmButton(BaseDashboardButton):
 class DashboardLaunchButton(BaseDashboardButton):
     _attr_name = "Dashboard Launch"
     _attr_unique_id = "family_defcon_dashboard_launch"
+    _attr_suggested_object_id = "family_defcon_dashboard_launch"
     _attr_icon = "mdi:rocket-launch"
 
     async def async_press(self) -> None:
@@ -264,6 +278,7 @@ class DashboardLaunchButton(BaseDashboardButton):
 class DashboardCancelButton(BaseDashboardButton):
     _attr_name = "Dashboard Cancel"
     _attr_unique_id = "family_defcon_dashboard_cancel"
+    _attr_suggested_object_id = "family_defcon_dashboard_cancel"
     _attr_icon = "mdi:cancel"
 
     async def async_press(self) -> None:

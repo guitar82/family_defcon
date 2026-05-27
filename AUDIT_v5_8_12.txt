@@ -1,0 +1,19 @@
+Family DEFCON v5.8.12 audit findings fixed
+
+1. dashboard_pin could be persisted in Store payload if a save occurred while a PIN was entered.
+   Fixed by forcing dashboard_pin="" in save_state payload.
+
+2. dashboard_confirm could restore as true after restart.
+   Fixed by always initializing dashboard_confirm=False and never persisting true.
+
+3. UI options update listener called config entry reload, but unload_entry was no-op.
+   Fixed by calling family_defcon.reload_config and notifying user that people/target entity changes need restart.
+
+4. People options form dashboard target defaults were always true due to `or True`.
+   Fixed to respect saved dashboard target list.
+
+5. Legacy dashboard PIN helper only checked plain pins.
+   Fixed to use verify_pin_value so SHA256/PBKDF2 hashes work.
+
+6. hash_pin service documentation said PBKDF2 after the switch to SHA256.
+   Fixed service description.

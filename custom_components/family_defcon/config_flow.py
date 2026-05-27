@@ -58,10 +58,13 @@ def _person_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
     clients = options.get("people_adguard_clients", {})
     default_targets = set(options.get("default_targets_list", []))
     parent_targets = set(options.get("parent_targets_list", []))
-    dashboard_targets = set(options.get("dashboard_targets_list", []))
+    saved_dashboard_targets = options.get("dashboard_targets_list", [])
+    has_saved_dashboard_targets = isinstance(saved_dashboard_targets, list)
+    dashboard_targets = set(saved_dashboard_targets if has_saved_dashboard_targets else [])
 
     if not isinstance(people, list) or not people:
         people = ["Parent 1", "Parent 2", "Child 1", "Child 2", "Child 3"]
+        has_saved_dashboard_targets = False
 
     out = []
     for name in people[:PEOPLE_SLOTS]:
@@ -80,7 +83,7 @@ def _person_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
             "adguard_client": clients.get(name, name) if isinstance(clients, dict) else name,
             "default_target": name in default_targets or not is_parent,
             "parent_target": name in parent_targets or is_parent,
-            "dashboard_target": name in dashboard_targets or True,
+            "dashboard_target": (name in dashboard_targets) if has_saved_dashboard_targets else True,
         })
     while len(out) < PEOPLE_SLOTS:
         out.append({

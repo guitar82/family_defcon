@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 
 from .const import DOMAIN, SIGNAL_UPDATE
 
@@ -15,6 +15,7 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
 class DashboardTargetSelect(SelectEntity):
     _attr_name = "Dashboard Target"
     _attr_unique_id = "family_defcon_dashboard_target"
+    _attr_suggested_object_id = "family_defcon_dashboard_target"
     _attr_has_entity_name = True
     _attr_should_poll = False
 
@@ -47,6 +48,7 @@ class DashboardTargetSelect(SelectEntity):
             return
         self.hass.data[DOMAIN]["state"]["dashboard_target"] = str(option)
         self.hass.data[DOMAIN]["state"]["dashboard_confirm"] = False
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:

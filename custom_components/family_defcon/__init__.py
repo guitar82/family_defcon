@@ -166,11 +166,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["config_path"] = config_file
 
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
-        """Reload Family DEFCON when options change so UI PIN changes apply immediately."""
+        """Apply UI option changes to the active config when possible.
+
+        Existing entity platforms are not fully unloaded by this legacy platform setup,
+        so newly added people or dynamic target buttons still require a Home Assistant restart.
+        Existing config values, PIN hashes, AdGuard client names, targets, penalties, and
+        station settings are refreshed through the reload_config service.
+        """
         hass.data.setdefault(DOMAIN, {})["config_entry"] = updated_entry
-        if hass.data[DOMAIN].get("setup_complete"):
-            _LOGGER.info("Family DEFCON options updated. Reloading integration so UI settings take effect.")
-            await hass.config_entries.async_reload(updated_entry.entry_id)
+        if hass.data[DOMAIN].get("setup_complete") and hass.services.has_service(DOMAIN, "reload_config"):
+            _LOGGER.info("Family DEFCON options updated. Applying active config. Restart Home Assistant if people or dashboard targets were added or removed.")
+            await hass.services.async_call(DOMAIN, "reload_config", {}, blocking=True)
+            persistent_notification.async_create(
+                hass,
+                "Family DEFCON settings were saved. Active config was reloaded. If you added, removed, or renamed people or dashboard targets, restart Home Assistant so generated entities are recreated.",
+                title="Family DEFCON settings updated",
+                notification_id="family_defcon_options_updated",
+            )
 
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
@@ -621,7 +633,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "adguard_managed_rule_count": int(stored.get("adguard_managed_rule_count", 0)),
         "dashboard_pin": "",
         "dashboard_target": str(stored.get("dashboard_target", "")),
-        "dashboard_confirm": bool(stored.get("dashboard_confirm", False)),
+        # Dashboard confirmation is intentionally never restored after restart.
+        "dashboard_confirm": False,
     }
 
     for person, value in stored.get("blocked_until", {}).items():
@@ -642,6 +655,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def save_state() -> None:
         payload = dict(st())
+
+        # Privacy and safety:
+        # Do not ever persist the live dashboard PIN or a confirmed launch state.
+        # The PIN is only valid while it is held in integration memory.
+        payload["dashboard_pin"] = ""
+        payload["dashboard_confirm"] = False
+
         payload["blocked_until"] = {
             person: value.isoformat() if isinstance(value, datetime) else None
             for person, value in st()["blocked_until"].items()
@@ -1217,14 +1237,24 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def handle_reload_config(call: ServiceCall) -> None:
         secrets_cache.clear()
         hass.data[DOMAIN]["config"] = apply_options_overrides(normalize_config(await load_yaml(hass.data.get(DOMAIN, {}).get("config_path", CONFIG_PATH))))
+
+        # Keep runtime state aligned with the active people list.
+        active_people = list(conf().get("people", []))
+        st()["blocked_until"] = {person: st().get("blocked_until", {}).get(person) for person in active_people}
+        st()["adguard_applied"] = {person: st().get("adguard_applied", {}).get(person, False) for person in active_people}
+
         targets = dashboard_targets()
         if st().get("dashboard_target") not in targets:
             dash = dashboard_config()
             default_target = str(dash.get("default_target", "")) if isinstance(dash, dict) else ""
             st()["dashboard_target"] = default_target if default_target in targets else (targets[0] if targets else "")
+
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
+
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
         opts = dict(getattr(entry, "options", {}) or {})
-        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ".")
+        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ". Restart Home Assistant if people or dashboard targets were added, removed, or renamed.")
 
     async def handle_block_person(call: ServiceCall) -> None:
         person = call.data["person"]
@@ -1419,14 +1449,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await update_entities()
 
     async def apply_launch_with_dashboard_pin(pin: str, target: str, station: str) -> None:
+        """Compatibility helper for any older dashboard launch path."""
         launcher = None
         for person, data in conf()["auth"]["users"].items():
-            if str(data.get("pin", "")) == str(pin):
+            if verify_pin_value(pin, data if isinstance(data, dict) else {}):
                 launcher = person
                 break
 
         if not launcher:
             await log_event(f"Bad PIN attempt at {station}.")
+            fire_family_event("bad_pin", station=station, attempts=1, max_attempts=conf()["auth"]["max_bad_pin_attempts"], message=f"Bad PIN attempt at {station}.")
             return
 
         await apply_launch(launcher, target, station)

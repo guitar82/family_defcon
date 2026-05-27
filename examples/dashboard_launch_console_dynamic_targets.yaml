@@ -317,6 +317,8 @@ cards:
             type: custom:button-card
             entity: this.entity_id
             show_state: false
+            name: |
+              [[[ return entity.attributes.target || entity.attributes.friendly_name || 'Target'; ]]]
             tap_action:
               action: call-service
               service: button.press
@@ -331,8 +333,8 @@ cards:
                 - background: |
                     [[[
                       const selected = states['select.family_defcon_dashboard_target']?.state || '';
-                      const name = entity.attributes.friendly_name?.replace('Select Target ', '') || entity.attributes.friendly_name || '';
-                      const parent = ['mom', 'dad', 'parent'].some(x => name.toLowerCase().includes(x));
+                      const name = entity.attributes.target || entity.attributes.friendly_name || '';
+                      const parent = entity.attributes.is_parent_target === true || ['parent', 'adult', 'guardian'].some(x => name.toLowerCase().includes(x));
                       if (selected === name && parent) return 'linear-gradient(135deg, #fdd835, #f9a825)';
                       if (selected === name) return 'linear-gradient(135deg, #29b6f6, #1565c0)';
                       return '#101820';
@@ -340,8 +342,8 @@ cards:
                 - color: |
                     [[[
                       const selected = states['select.family_defcon_dashboard_target']?.state || '';
-                      const name = entity.attributes.friendly_name?.replace('Select Target ', '') || entity.attributes.friendly_name || '';
-                      const parent = ['mom', 'dad', 'parent'].some(x => name.toLowerCase().includes(x));
+                      const name = entity.attributes.target || entity.attributes.friendly_name || '';
+                      const parent = entity.attributes.is_parent_target === true || ['parent', 'adult', 'guardian'].some(x => name.toLowerCase().includes(x));
                       return selected === name && parent ? '#111111' : '#ffffff';
                     ]]]
                 - border: 1px solid rgba(255,255,255,.12)
