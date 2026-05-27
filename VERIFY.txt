@@ -1,13 +1,13 @@
-Family DEFCON v5.8.14 Clean Install Fix verification
-Base package: v5.8.13 cleanup service
+Family DEFCON v5.8.15 Target Button Entity Name Fix verification
+Base package: v5.8.14 clean install fix
 Python compile: OK
-manifest version 5.8.14: OK
-cleanup_target_button_entities service registration fixed: OK
-Cleanup service schema added: OK
-Old button.select_target_* entries are auto-cleaned on startup: OK
-Manual cleanup action remains available: OK
-Dynamic dashboard catches both new and old target entity ID styles: OK
-Basic fallback dashboard without auto-entities added: OK
+manifest version 5.8.15: OK
+Dynamic target button entity name is deterministic: OK
+Target/display_name/is_parent_target attributes present: OK
+Dynamic target button-only dashboard supports new and old entity ID styles: OK
+Cleanup service preserved: OK
+Startup cleanup preserved: OK
+Fallback dashboard without auto-entities preserved: OK
 Hidden dashboard PIN state preserved: OK
 Internal PIN is never persisted: OK
 Instant SHA256 PIN verification preserved: OK

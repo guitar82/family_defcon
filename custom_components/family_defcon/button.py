@@ -152,7 +152,7 @@ class DashboardSelectTargetButton(BaseDashboardButton):
         self.target_name = str(target_name)
         self.target_slug = _slugify_target(self.target_name)
         object_id = f"family_defcon_select_target_{self.target_slug}"
-        self._attr_name = f"Select Target {self.target_name}"
+        self._attr_name = object_id
         self._attr_unique_id = object_id
         self._attr_suggested_object_id = object_id
         self._attr_icon = "mdi:account-crosshairs"
@@ -162,6 +162,7 @@ class DashboardSelectTargetButton(BaseDashboardButton):
         """Expose configured target metadata for dynamic dashboard cards."""
         return {
             "target": self.target_name,
+            "display_name": self.target_name,
             "target_slug": self.target_slug,
             "is_default_target": self.target_name in self.config_data.get("default_targets", []),
             "is_parent_target": self.target_name in self.config_data.get("parent_targets", []),

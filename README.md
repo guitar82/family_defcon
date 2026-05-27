@@ -487,3 +487,28 @@ Use this fallback dashboard if auto-entities is not installed:
 ```text
 examples/dashboard_launch_console_basic_no_auto_entities.yaml
 ```
+
+
+## v5.8.15 Target Button Entity Name Fix
+
+v5.8.15 fixes generated target button entity IDs on clean installs by making the dynamic target button entity name deterministic, not just the suggested object ID.
+
+Expected clean install target buttons:
+
+```text
+button.family_defcon_select_target_child_1
+button.family_defcon_select_target_parent_1
+```
+
+For upgraded/test installs that still have old IDs, the dynamic target button example supports:
+
+```text
+button.select_target_*
+button.family_defcon_select_target_*
+```
+
+New helper example:
+
+```text
+examples/dashboard_dynamic_target_buttons_only.yaml
+```

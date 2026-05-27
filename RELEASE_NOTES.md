@@ -1,5 +1,12 @@
 # Family DEFCON Release Notes
 
+## v5.8.15
+
+- Fixed dynamic target button entity IDs by making the entity name deterministic.
+- Added display_name target metadata for dynamic dashboard rendering.
+- Added `examples/dashboard_dynamic_target_buttons_only.yaml` that supports both old and new target entity IDs.
+- Preserved cleanup service, startup cleanup, fallback dashboard, hidden PIN state, instant PIN verification, and native HA events.
+
 ## v5.8.14
 
 - Fixed cleanup service registration so `family_defcon.cleanup_target_button_entities` loads correctly.
