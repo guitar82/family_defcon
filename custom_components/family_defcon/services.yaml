@@ -166,3 +166,23 @@ cleanup_target_button_entities:
       default: false
       selector:
         boolean:
+
+parent_admin_clear_all:
+  name: Parent Admin Clear All
+  description: Clear all Family DEFCON timeouts after validating the hidden parent admin PIN.
+
+parent_admin_enforce_now:
+  name: Parent Admin Enforce Now
+  description: Reapply AdGuard enforcement after validating the hidden parent admin PIN.
+
+parent_admin_arm:
+  name: Parent Admin Arm
+  description: Arm the Family DEFCON command system after validating the hidden parent admin PIN.
+
+parent_admin_disarm:
+  name: Parent Admin Disarm
+  description: Disarm the Family DEFCON command system after validating the hidden parent admin PIN.
+
+parent_admin_cleanup_targets:
+  name: Parent Admin Cleanup Targets
+  description: Clean stale dynamic target button entities after validating the hidden parent admin PIN.

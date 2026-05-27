@@ -46,6 +46,11 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         DashboardConfirmButton(hass),
         DashboardLaunchButton(hass),
         DashboardCancelButton(hass),
+        ParentAdminClearAllButton(hass),
+        ParentAdminEnforceNowButton(hass),
+        ParentAdminArmButton(hass),
+        ParentAdminDisarmButton(hass),
+        ParentAdminCleanupTargetsButton(hass),
     ]
 
     for target in _dashboard_targets_from_config(config_data):
@@ -294,3 +299,57 @@ class DashboardCancelButton(BaseDashboardButton):
         self.state_data["dashboard_confirm"] = False
         self.state_data["last_event"] = "Dashboard command cancelled."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+
+
+class ParentAdminServiceButton(BaseDashboardButton):
+    """Base button for parent-admin PIN protected service actions."""
+
+    service_name: str = ""
+    icon_name: str = "mdi:shield-account"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        super().__init__(hass)
+        self._attr_icon = self.icon_name
+
+    async def async_press(self) -> None:
+        await self.hass.services.async_call(DOMAIN, self.service_name, {}, blocking=False)
+
+
+class ParentAdminClearAllButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Clear All"
+    _attr_unique_id = "family_defcon_parent_admin_clear_all"
+    _attr_suggested_object_id = "family_defcon_parent_admin_clear_all"
+    service_name = "parent_admin_clear_all"
+    icon_name = "mdi:restart"
+
+
+class ParentAdminEnforceNowButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Enforce Now"
+    _attr_unique_id = "family_defcon_parent_admin_enforce_now"
+    _attr_suggested_object_id = "family_defcon_parent_admin_enforce_now"
+    service_name = "parent_admin_enforce_now"
+    icon_name = "mdi:shield-sync"
+
+
+class ParentAdminArmButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Arm"
+    _attr_unique_id = "family_defcon_parent_admin_arm"
+    _attr_suggested_object_id = "family_defcon_parent_admin_arm"
+    service_name = "parent_admin_arm"
+    icon_name = "mdi:shield-lock"
+
+
+class ParentAdminDisarmButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Disarm"
+    _attr_unique_id = "family_defcon_parent_admin_disarm"
+    _attr_suggested_object_id = "family_defcon_parent_admin_disarm"
+    service_name = "parent_admin_disarm"
+    icon_name = "mdi:shield-off"
+
+
+class ParentAdminCleanupTargetsButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Cleanup Targets"
+    _attr_unique_id = "family_defcon_parent_admin_cleanup_targets"
+    _attr_suggested_object_id = "family_defcon_parent_admin_cleanup_targets"
+    service_name = "parent_admin_cleanup_targets"
+    icon_name = "mdi:broom"

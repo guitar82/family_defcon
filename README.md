@@ -512,3 +512,34 @@ New helper example:
 ```text
 examples/dashboard_dynamic_target_buttons_only.yaml
 ```
+
+
+## v5.8.16 Parent PIN Admin Controls
+
+v5.8.16 adds a separate parent/admin interface protected by parent PIN validation.
+
+New hidden parent PIN entity:
+
+```text
+text.family_defcon_parent_admin_pin
+```
+
+New parent-admin buttons:
+
+```text
+button.family_defcon_parent_admin_clear_all
+button.family_defcon_parent_admin_enforce_now
+button.family_defcon_parent_admin_arm
+button.family_defcon_parent_admin_disarm
+button.family_defcon_parent_admin_cleanup_targets
+```
+
+These buttons only work if the entered PIN belongs to a configured user with role `parent`.
+
+New example dashboard:
+
+```text
+examples/dashboard_parent_interface.yaml
+```
+
+The parent admin PIN is masked as entity state and is never persisted to storage.

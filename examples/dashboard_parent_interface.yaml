@@ -1,0 +1,137 @@
+# Family DEFCON Parent Interface
+# Requires button-card.
+# Parent controls only work when a valid parent PIN is entered in text.family_defcon_parent_admin_pin.
+
+type: vertical-stack
+cards:
+  - type: custom:button-card
+    name: PARENT COMMAND CENTER
+    icon: mdi:shield-account
+    show_icon: true
+    show_name: true
+    tap_action:
+      action: none
+    triggers_update:
+      - sensor.family_defcon_last_event
+      - text.family_defcon_parent_admin_pin
+    styles:
+      card:
+        - border-radius: 20px
+        - padding: 12px
+        - background: "#0b1117"
+        - color: white
+        - border: 1px solid rgba(253,216,53,.45)
+      name:
+        - justify-self: start
+        - color: "#fdd835"
+        - font-size: 18px
+        - font-weight: 950
+      icon:
+        - color: "#fdd835"
+    custom_fields:
+      sub: |
+        [[[
+          const event = states['sensor.family_defcon_last_event']?.state || 'Enter parent PIN before using controls.';
+          return `<div style="font-size:12px;color:#b0bec5;text-align:left;margin-top:6px;">${event}</div>`;
+        ]]]
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: text.family_defcon_parent_admin_pin
+        name: PARENT PIN
+        show_icon: false
+        show_state: false
+        triggers_update: all
+        tap_action:
+          action: none
+        styles:
+          card:
+            - height: 78px
+            - border-radius: 18px
+            - background: "#101820"
+            - color: white
+            - border: 1px solid rgba(253,216,53,.35)
+          name:
+            - color: "#fdd835"
+            - font-weight: 950
+        custom_fields:
+          pin: |
+            [[[
+              const pin = states['text.family_defcon_parent_admin_pin']?.state || '';
+              const length = Math.min(pin.length, 4);
+              const masked = length ? '●'.repeat(length) : 'ENTER PIN';
+              return `<div style="font-size:${length ? '26px' : '18px'};font-weight:950;letter-spacing:${length ? '7px' : '1px'};">${masked}</div>`;
+            ]]]
+
+      - type: custom:button-card
+        entity: switch.family_defcon_command_system_armed
+        name: ARMED STATUS
+        icon: mdi:shield-lock
+        show_state: true
+        tap_action:
+          action: none
+
+  - type: grid
+    columns: 5
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: button.family_defcon_parent_admin_arm
+        name: ARM
+        icon: mdi:shield-lock
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_parent_admin_arm
+      - type: custom:button-card
+        entity: button.family_defcon_parent_admin_disarm
+        name: DISARM
+        icon: mdi:shield-off
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_parent_admin_disarm
+      - type: custom:button-card
+        entity: button.family_defcon_parent_admin_clear_all
+        name: CLEAR ALL
+        icon: mdi:restart
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_parent_admin_clear_all
+      - type: custom:button-card
+        entity: button.family_defcon_parent_admin_enforce_now
+        name: ENFORCE
+        icon: mdi:shield-sync
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_parent_admin_enforce_now
+      - type: custom:button-card
+        entity: button.family_defcon_parent_admin_cleanup_targets
+        name: CLEANUP
+        icon: mdi:broom
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_parent_admin_cleanup_targets
+
+  - type: entities
+    title: Family DEFCON Status
+    entities:
+      - entity: sensor.family_defcon_level
+      - entity: sensor.family_defcon_peace_status
+      - entity: sensor.family_defcon_daily_launches
+      - entity: sensor.family_defcon_conflict_chain
+      - entity: sensor.family_defcon_last_launcher
+      - entity: sensor.family_defcon_last_target
+      - entity: binary_sensor.family_defcon_mutual_wifi_destruction
+      - entity: sensor.family_defcon_last_event

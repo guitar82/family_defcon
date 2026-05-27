@@ -1,5 +1,14 @@
 # Family DEFCON Release Notes
 
+## v5.8.16
+
+- Added parent/admin hidden PIN entity.
+- Added parent/admin PIN-protected control buttons for arm, disarm, clear all, enforce now, and cleanup targets.
+- Added `examples/dashboard_parent_interface.yaml`.
+- Parent admin actions require a configured user with role `parent`.
+- Parent admin PIN is masked and not persisted.
+- Preserved dynamic target fixes, cleanup service, hidden launch PIN state, instant PIN verification, and native HA events.
+
 ## v5.8.15
 
 - Fixed dynamic target button entity IDs by making the entity name deterministic.

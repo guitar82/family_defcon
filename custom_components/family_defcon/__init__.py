@@ -633,6 +633,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "adguard_last_error": str(stored.get("adguard_last_error", "")),
         "adguard_managed_rule_count": int(stored.get("adguard_managed_rule_count", 0)),
         "dashboard_pin": "",
+        "parent_admin_pin": "",
         "dashboard_target": str(stored.get("dashboard_target", "")),
         # Dashboard confirmation is intentionally never restored after restart.
         "dashboard_confirm": False,
@@ -661,6 +662,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         # Do not ever persist the live dashboard PIN or a confirmed launch state.
         # The PIN is only valid while it is held in integration memory.
         payload["dashboard_pin"] = ""
+        payload["parent_admin_pin"] = ""
         payload["dashboard_confirm"] = False
 
         payload["blocked_until"] = {
@@ -720,6 +722,38 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         event_log.insert(0, {"time": datetime.now().isoformat(timespec="seconds"), "message": message})
         del event_log[conf()["max_event_log"]:]
         await save_state()
+        await update_entities()
+
+    async def verify_parent_admin_pin(action_name: str) -> tuple[bool, str]:
+        """Validate the parent admin PIN currently held in memory."""
+        pin = str(st().get("parent_admin_pin", "") or "")
+        if not pin:
+            message = f"Parent admin action rejected. PIN required for {action_name}."
+            await log_event(message)
+            fire_family_event("parent_admin_rejected", action=action_name, reason="pin_required", message=message)
+            return False, ""
+
+        for person, data in conf()["auth"]["users"].items():
+            if not isinstance(data, dict):
+                continue
+
+            if verify_pin_value(pin, data):
+                role = str(data.get("role", "")).lower()
+                if role == "parent":
+                    return True, str(person)
+
+                message = f"Parent admin action rejected. {person} is not a parent."
+                await log_event(message)
+                fire_family_event("parent_admin_rejected", action=action_name, launcher=person, reason="not_parent", message=message)
+                return False, str(person)
+
+        message = f"Parent admin action rejected. Invalid parent PIN for {action_name}."
+        await log_event(message)
+        fire_family_event("parent_admin_rejected", action=action_name, reason="bad_pin", message=message)
+        return False, ""
+
+    async def clear_parent_admin_pin() -> None:
+        st()["parent_admin_pin"] = ""
         await update_entities()
 
     def valid_targets() -> list[str]:
@@ -1289,6 +1323,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             st()["dashboard_target"] = default_target if default_target in targets else (targets[0] if targets else "")
 
         st()["dashboard_pin"] = ""
+        st()["parent_admin_pin"] = ""
         st()["dashboard_confirm"] = False
 
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -1558,6 +1593,89 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             len(auto_failed),
         )
 
+    async def handle_parent_admin_clear_all(call: ServiceCall) -> None:
+        ok, parent = await verify_parent_admin_pin("clear_all")
+        if not ok:
+            await clear_parent_admin_pin()
+            return
+        await clear_parent_admin_pin()
+        await handle_clear_all(call)
+        message = f"Parent admin clear all approved by {parent}."
+        await log_event(message)
+        fire_family_event("parent_admin_action", action="clear_all", parent=parent, message=message)
+
+    async def handle_parent_admin_enforce_now(call: ServiceCall) -> None:
+        ok, parent = await verify_parent_admin_pin("enforce_now")
+        if not ok:
+            await clear_parent_admin_pin()
+            return
+        await clear_parent_admin_pin()
+        await enforce_now()
+        message = f"Parent admin enforce now approved by {parent}."
+        await log_event(message)
+        fire_family_event("parent_admin_action", action="enforce_now", parent=parent, message=message)
+
+    async def handle_parent_admin_arm(call: ServiceCall) -> None:
+        ok, parent = await verify_parent_admin_pin("arm")
+        if not ok:
+            await clear_parent_admin_pin()
+            return
+        st()["armed"] = True
+        await clear_parent_admin_pin()
+        message = f"Parent admin armed command system. Approved by {parent}."
+        await log_event(message)
+        fire_family_event("parent_admin_action", action="arm", parent=parent, message=message)
+        await update_entities()
+
+    async def handle_parent_admin_disarm(call: ServiceCall) -> None:
+        ok, parent = await verify_parent_admin_pin("disarm")
+        if not ok:
+            await clear_parent_admin_pin()
+            return
+        st()["armed"] = False
+        await clear_parent_admin_pin()
+        message = f"Parent admin disarmed command system. Approved by {parent}."
+        await log_event(message)
+        fire_family_event("parent_admin_action", action="disarm", parent=parent, message=message)
+        await update_entities()
+
+    async def handle_parent_admin_cleanup_targets(call: ServiceCall) -> None:
+        ok, parent = await verify_parent_admin_pin("cleanup_targets")
+        if not ok:
+            await clear_parent_admin_pin()
+            return
+        await clear_parent_admin_pin()
+        removed, failed = await cleanup_target_button_entity_registry(
+            remove_old_select_target=True,
+            remove_family_defcon_target_buttons=False,
+        )
+        message = f"Parent admin cleanup targets approved by {parent}. Removed {len(removed)} stale target entities."
+        if failed:
+            message += f" Failed {len(failed)}."
+        await log_event(message)
+        fire_family_event(
+            "parent_admin_action",
+            action="cleanup_targets",
+            parent=parent,
+            removed_count=len(removed),
+            failed_count=len(failed),
+            removed=removed,
+            failed=failed,
+            message=message,
+        )
+        persistent_notification.async_create(
+            hass,
+            message,
+            title="Family DEFCON parent admin cleanup",
+            notification_id="family_defcon_parent_admin_cleanup",
+        )
+        await update_entities()
+
+    hass.services.async_register(DOMAIN, "parent_admin_clear_all", handle_parent_admin_clear_all)
+    hass.services.async_register(DOMAIN, "parent_admin_enforce_now", handle_parent_admin_enforce_now)
+    hass.services.async_register(DOMAIN, "parent_admin_arm", handle_parent_admin_arm)
+    hass.services.async_register(DOMAIN, "parent_admin_disarm", handle_parent_admin_disarm)
+    hass.services.async_register(DOMAIN, "parent_admin_cleanup_targets", handle_parent_admin_cleanup_targets)
     hass.services.async_register(DOMAIN, "cleanup_target_button_entities", handle_cleanup_target_button_entities, schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA)
     hass.services.async_register(DOMAIN, "launch", handle_launch, schema=LAUNCH_SCHEMA)
     hass.services.async_register(DOMAIN, "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)

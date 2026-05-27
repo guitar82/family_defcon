@@ -1,15 +1,18 @@
-Family DEFCON v5.8.15 Target Button Entity Name Fix verification
-Base package: v5.8.14 clean install fix
+Family DEFCON v5.8.16 Parent PIN Admin Controls verification
+Base package: v5.8.15 target button entity name fix
 Python compile: OK
-manifest version 5.8.15: OK
-Dynamic target button entity name is deterministic: OK
-Target/display_name/is_parent_target attributes present: OK
-Dynamic target button-only dashboard supports new and old entity ID styles: OK
+manifest version 5.8.16: OK
+Parent admin PIN text entity added: OK
+Parent admin PIN entity state is masked: OK
+Parent admin PIN is never persisted: OK
+Parent admin role verification helper added: OK
+Parent admin services added: OK
+Parent admin button entities added: OK
+Parent interface dashboard example added: OK
+Child PINs are rejected for parent admin actions: OK
+Dynamic target fixes preserved: OK
 Cleanup service preserved: OK
-Startup cleanup preserved: OK
-Fallback dashboard without auto-entities preserved: OK
-Hidden dashboard PIN state preserved: OK
-Internal PIN is never persisted: OK
+Hidden launch PIN state preserved: OK
 Instant SHA256 PIN verification preserved: OK
 Native HA events preserved: OK
 No v5.9 dashboard auth sensor code carried over: OK
