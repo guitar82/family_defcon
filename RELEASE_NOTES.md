@@ -1,5 +1,14 @@
 # Family DEFCON Release Notes
 
+## v5.9.0
+
+- Added launch console and status overview dashboard examples.
+- Added validated dashboard_confirm_pin service.
+- Confirm button validates PIN before turning confirmed state on.
+- Added dashboard auth status, message, and confirmed by sensors.
+- Launch console example shows confirmed user, invalid PIN, and lockout warnings.
+- Launch button now sets immediate launching status before backend enforcement completes.
+
 ## v5.8.0
 
 - Added 4 character max validation for guided UI PIN entry.

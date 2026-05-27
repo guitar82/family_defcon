@@ -31,6 +31,10 @@ class BaseDashboardButton(ButtonEntity):
     def config_data(self) -> dict:
         return self.hass.data[DOMAIN]["config"]
 
+    def dashboard_station(self) -> str:
+        dashboard = self.config_data.get("dashboard", {})
+        return str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
@@ -43,17 +47,33 @@ class DashboardConfirmButton(BaseDashboardButton):
     _attr_icon = "mdi:target"
 
     async def async_press(self) -> None:
-        if not str(self.state_data.get("dashboard_pin", "")):
+        pin = str(self.state_data.get("dashboard_pin", ""))
+        target = str(self.state_data.get("dashboard_target", ""))
+
+        if not pin:
             self.state_data["last_event"] = "Dashboard confirm rejected. Missing PIN."
             self.state_data["dashboard_confirm"] = False
+            self.state_data["dashboard_confirmed_by"] = ""
+            self.state_data["dashboard_auth_status"] = "invalid"
+            self.state_data["dashboard_auth_message"] = "Missing PIN."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
-        if not str(self.state_data.get("dashboard_target", "")):
+
+        if not target:
             self.state_data["last_event"] = "Dashboard confirm rejected. Missing target."
             self.state_data["dashboard_confirm"] = False
+            self.state_data["dashboard_confirmed_by"] = ""
+            self.state_data["dashboard_auth_status"] = "invalid"
+            self.state_data["dashboard_auth_message"] = "Missing target."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
-        self.state_data["dashboard_confirm"] = True
+
+        await self.hass.services.async_call(
+            DOMAIN,
+            "dashboard_confirm_pin",
+            {"pin": pin, "target": target, "station": self.dashboard_station()},
+            blocking=True,
+        )
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
@@ -65,12 +85,12 @@ class DashboardLaunchButton(BaseDashboardButton):
     async def async_press(self) -> None:
         pin = str(self.state_data.get("dashboard_pin", ""))
         target = str(self.state_data.get("dashboard_target", ""))
-        dashboard = self.config_data.get("dashboard", {})
-        station = str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
 
         if not pin:
             self.state_data["last_event"] = "Dashboard launch rejected. Missing PIN."
             self.state_data["dashboard_confirm"] = False
+            self.state_data["dashboard_auth_status"] = "invalid"
+            self.state_data["dashboard_auth_message"] = "Missing PIN."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
@@ -78,24 +98,28 @@ class DashboardLaunchButton(BaseDashboardButton):
             self.state_data["last_event"] = "Dashboard launch rejected. Missing target."
             self.state_data["dashboard_pin"] = ""
             self.state_data["dashboard_confirm"] = False
+            self.state_data["dashboard_auth_status"] = "invalid"
+            self.state_data["dashboard_auth_message"] = "Missing target."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         if not bool(self.state_data.get("dashboard_confirm", False)):
-            self.state_data["last_event"] = "Dashboard launch rejected. Confirm target before launch."
+            self.state_data["last_event"] = "Dashboard launch rejected. Confirm valid PIN before launch."
+            self.state_data["dashboard_auth_status"] = "invalid"
+            self.state_data["dashboard_auth_message"] = "Press CONFIRM with a valid PIN before launch."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
+
+        self.state_data["dashboard_auth_status"] = "launching"
+        self.state_data["dashboard_auth_message"] = "Launch sent. Applying rules..."
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
         await self.hass.services.async_call(
             DOMAIN,
             "launch_with_pin",
-            {"pin": pin, "target": target, "station": station},
-            blocking=True,
+            {"pin": pin, "target": target, "station": self.dashboard_station()},
+            blocking=False,
         )
-
-        self.state_data["dashboard_pin"] = ""
-        self.state_data["dashboard_confirm"] = False
-        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
 class DashboardCancelButton(BaseDashboardButton):
@@ -113,4 +137,7 @@ class DashboardCancelButton(BaseDashboardButton):
         self.state_data["dashboard_pin"] = ""
         self.state_data["dashboard_target"] = default_target if default_target in targets else (str(targets[0]) if targets else "")
         self.state_data["dashboard_confirm"] = False
+        self.state_data["dashboard_confirmed_by"] = ""
+        self.state_data["dashboard_auth_status"] = "idle"
+        self.state_data["dashboard_auth_message"] = "Cancelled. Enter PIN and confirm target."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)

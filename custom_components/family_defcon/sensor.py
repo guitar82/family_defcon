@@ -16,6 +16,9 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         LastTargetSensor(hass),
         LastEventSensor(hass),
         DashboardPeopleSensor(hass),
+        DashboardAuthStatusSensor(hass),
+        DashboardAuthMessageSensor(hass),
+        DashboardConfirmedBySensor(hass),
         AdGuardStatusSensor(hass),
         AdGuardLastSyncSensor(hass),
         AdGuardLastErrorSensor(hass),
@@ -115,6 +118,22 @@ def _entity_slug(name: str) -> str:
     return slug.strip("_")
 
 
+
+
+class DashboardAuthStatusSensor(Base):
+    _attr_name = "Dashboard Auth Status"; _attr_unique_id = "family_defcon_dashboard_auth_status"
+    @property
+    def native_value(self): return self.s.get("dashboard_auth_status", "idle")
+
+class DashboardAuthMessageSensor(Base):
+    _attr_name = "Dashboard Auth Message"; _attr_unique_id = "family_defcon_dashboard_auth_message"
+    @property
+    def native_value(self): return self.s.get("dashboard_auth_message", "")
+
+class DashboardConfirmedBySensor(Base):
+    _attr_name = "Dashboard Confirmed By"; _attr_unique_id = "family_defcon_dashboard_confirmed_by"
+    @property
+    def native_value(self): return self.s.get("dashboard_confirmed_by", "")
 
 
 class AdGuardStatusSensor(Base):

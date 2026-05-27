@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.8.0**
+**Current release: v5.9.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -953,3 +953,27 @@ action: family_defcon.config_audit_status
 ```
 
 Neither diagnostic exposes PIN values.
+
+
+## v5.9.0 Dashboard examples and confirm validation
+
+v5.9 adds two example dashboard files:
+
+```text
+examples/dashboard_launch_console.yaml
+examples/dashboard_status_overview.yaml
+```
+
+The confirm button now validates the PIN before setting the target confirmed state. A wrong PIN will not turn the confirm state green.
+
+New dashboard feedback sensors:
+
+```text
+sensor.family_defcon_dashboard_auth_status
+sensor.family_defcon_dashboard_auth_message
+sensor.family_defcon_dashboard_confirmed_by
+```
+
+The launch console example shows confirmed user, invalid PIN, and lockout warnings under the Launch Command Interface title.
+
+The launch button now immediately changes the dashboard status to launching while backend enforcement runs, so it feels more responsive.

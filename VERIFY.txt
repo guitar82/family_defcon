@@ -1,15 +1,11 @@
-Family DEFCON v5.8 Config Audit + 4 Character PINs verification
+Family DEFCON v5.9 Dashboard Examples + Confirm Validation verification
 Python compile: OK
-manifest version 5.8.0: OK
-Guided PIN fields remain hidden/write-only: OK
-Guided UI rejects PINs longer than 4 characters: OK
-Backend launch rejects PINs longer than 4 characters: OK
-Active config validates people/targets/auth/clients/dashboard station: OK
-Dashboard launch uses configured dashboard station ID: OK
-Target select uses active dashboard targets: OK
-config_audit_status service added: OK
-auth_config_status service preserved: OK
-Advanced YAML clear fix preserved: OK
-Dashboard station fix preserved: OK
-README updated: OK
-RELEASE_NOTES updated: OK
+manifest version 5.9.0: OK
+Example launch console dashboard added: OK
+Example status overview dashboard added: OK
+Confirm button validates PIN before turning green: OK
+Wrong PIN keeps dashboard_confirm false: OK
+Lockout/bad PIN warnings are shown through dashboard auth sensors: OK
+Confirmed by sensor added: OK
+Launch button shows immediate launching status: OK
+Existing v5.8 config audit and 4 digit PIN behavior preserved: OK
