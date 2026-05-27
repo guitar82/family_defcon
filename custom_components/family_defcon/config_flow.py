@@ -19,12 +19,13 @@ STATION_SLOTS = 8
 MAX_PIN_LENGTH = 4
 
 
-# FAMILY_DEFCON_FAST_PIN_HASH_ITERATIONS: optimized for 4 digit local dashboard PINs.
-def hash_pin_for_options(pin: str, iterations: int = 10000) -> str:
-    """Return a PBKDF2-SHA256 hash string for a PIN entered in the options UI."""
+# FAMILY_DEFCON_INSTANT_PIN_HASH: optimized for 4 digit local dashboard PINs.
+# This is intentionally fast. It hides PINs from casual viewing without slowing down dashboard confirm.
+def hash_pin_for_options(pin: str) -> str:
+    """Return a fast salted SHA256 hash string for a PIN entered in the options UI."""
     salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt.encode(), iterations)
-    return f"pbkdf2_sha256${iterations}${salt}${digest.hex()}"
+    digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+    return f"sha256${salt}${digest}"
 
 
 PIN_PASSWORD_SELECTOR = selector.TextSelector(
@@ -60,19 +61,25 @@ def _person_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
     dashboard_targets = set(options.get("dashboard_targets_list", []))
 
     if not isinstance(people, list) or not people:
-        people = ["Mom", "Dad", "Henry", "Marc", "Maggie"]
+        people = ["Parent 1", "Parent 2", "Child 1", "Child 2", "Child 3"]
 
     out = []
     for name in people[:PEOPLE_SLOTS]:
-        role = roles.get(name, "parent" if name in ("Mom", "Dad") else "child") if isinstance(roles, dict) else "child"
+        if isinstance(roles, dict) and name in roles:
+            role = roles.get(name, "child")
+        else:
+            lowered = str(name).lower()
+            role = "parent" if lowered.startswith(("parent", "adult", "guardian")) else "child"
+
+        is_parent = role == "parent"
         out.append({
             "name": name,
             "role": role,
             "pin": "",
             "pin_hash": pin_hashes.get(name, "") if isinstance(pin_hashes, dict) else "",
             "adguard_client": clients.get(name, name) if isinstance(clients, dict) else name,
-            "default_target": name in default_targets or (role == "child" and name not in ("Mom", "Dad")),
-            "parent_target": name in parent_targets or role == "parent",
+            "default_target": name in default_targets or not is_parent,
+            "parent_target": name in parent_targets or is_parent,
             "dashboard_target": name in dashboard_targets or True,
         })
     while len(out) < PEOPLE_SLOTS:
@@ -214,22 +221,16 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={
                     "use_ui_config": True,
                     "cooldown_seconds": int(user_input.get("cooldown_seconds", 30)),
-                    "people_list": ["Mom", "Dad", "Henry", "Marc", "Maggie"],
-                    "people_roles": {"Mom": "parent", "Dad": "parent", "Henry": "child", "Marc": "child", "Maggie": "child"},
+                    "people_list": ["Parent 1", "Parent 2", "Child 1", "Child 2", "Child 3"],
+                    "people_roles": {"Parent 1": "parent", "Parent 2": "parent", "Child 1": "child", "Child 2": "child", "Child 3": "child"},
                     "people_pins": {},
-                    "people_pin_hashes": {
-                        "Mom": hash_pin_for_options("1111"),
-                        "Dad": hash_pin_for_options("2222"),
-                        "Henry": hash_pin_for_options("3333"),
-                        "Marc": hash_pin_for_options("4444"),
-                        "Maggie": hash_pin_for_options("5555"),
-                    },
-                    "people_adguard_clients": {"Mom": "Mom", "Dad": "Dad", "Henry": "Henry", "Marc": "Marc", "Maggie": "Maggie"},
-                    "default_targets_list": ["Henry", "Marc", "Maggie"],
-                    "parent_targets_list": ["Mom", "Dad"],
-                    "dashboard_targets_list": ["Henry", "Marc", "Maggie", "Mom", "Dad"],
+                    "people_pin_hashes": {},
+                    "people_adguard_clients": {"Parent 1": "Parent 1", "Parent 2": "Parent 2", "Child 1": "Child 1", "Child 2": "Child 2", "Child 3": "Child 3"},
+                    "default_targets_list": ["Child 1", "Child 2", "Child 3"],
+                    "parent_targets_list": ["Parent 1", "Parent 2"],
+                    "dashboard_targets_list": ["Child 1", "Child 2", "Child 3", "Parent 1", "Parent 2"],
                     "dashboard_station_id": "dashboard",
-                    "dashboard_default_target": "Henry",
+                    "dashboard_default_target": "Child 1",
                     "stations_list": [{"id": "dashboard", "name": "Home Assistant Dashboard", "enabled": True, "key_entity": ""}],
                     "dns_enabled": bool(user_input.get("dns_enabled", True)),
                     "adguard_base_url": str(user_input.get("adguard_base_url", "")).rstrip("/"),
@@ -367,7 +368,7 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
         stations = _station_defaults(opts)
         fields = {
             vol.Optional("dashboard_station_id", default=opts.get("dashboard_station_id", "dashboard")): str,
-            vol.Optional("dashboard_default_target", default=opts.get("dashboard_default_target", "Henry")): str,
+            vol.Optional("dashboard_default_target", default=opts.get("dashboard_default_target", "Child 1")): str,
         }
         for idx, station in enumerate(stations, start=1):
             prefix = f"station_{idx}"

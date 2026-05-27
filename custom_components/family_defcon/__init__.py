@@ -884,22 +884,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 actions = people_actions.get(person, {})
                 await call_custom_action(actions.get("block") if is_blocked(person) else actions.get("unblock"))
 
-    def hash_pin_value(pin: str, iterations: int = 200000) -> str:
-        """Return a PBKDF2-SHA256 hash string for a PIN."""
+    def hash_pin_value(pin: str) -> str:
+        """Return a fast salted SHA256 hash string for a 4 digit local dashboard PIN."""
         salt = secrets.token_hex(16)
-        digest = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt.encode(), iterations)
-        return f"pbkdf2_sha256${iterations}${salt}${digest.hex()}"
+        digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+        return f"sha256${salt}${digest}"
 
     def verify_pin_value(pin: str, user_data: dict[str, Any]) -> bool:
-        """Verify either a hashed PIN or legacy plain text PIN."""
+        """Verify fast SHA256 hashes, old PBKDF2 hashes, or legacy plain text PINs."""
         stored_hash = str(user_data.get("pin_hash", "") or "")
         if stored_hash:
             try:
-                algo, iterations_raw, salt, expected = stored_hash.split("$", 3)
-                if algo != "pbkdf2_sha256":
-                    return False
-                digest = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt.encode(), int(iterations_raw)).hex()
-                return hmac.compare_digest(digest, expected)
+                parts = stored_hash.split("$")
+                algo = parts[0]
+
+                if algo == "sha256" and len(parts) == 3:
+                    _, salt, expected = parts
+                    digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+                    return hmac.compare_digest(digest, expected)
+
+                if algo == "pbkdf2_sha256" and len(parts) == 4:
+                    _, iterations_raw, salt, expected = parts
+                    digest = hashlib.pbkdf2_hmac(
+                        "sha256",
+                        str(pin).encode(),
+                        salt.encode(),
+                        int(iterations_raw),
+                    ).hex()
+                    return hmac.compare_digest(digest, expected)
+
+                return False
             except Exception:
                 return False
 

@@ -1,0 +1,19 @@
+Family DEFCON v5.8.9 Clean Public Beta
+
+Release focus:
+- UI-first setup
+- Dynamic target buttons
+- No hard coded personal names
+- No active demo PINs
+- Clean public README
+- YAML only as backup/advanced option
+- Stable v5.8.x backend line
+
+Recommended frontend cards:
+- button-card
+- auto-entities
+
+Recommended examples:
+- examples/dashboard_launch_console_dynamic_targets.yaml
+- examples/dashboard_status_overview.yaml
+- examples/automation_event_announcements.yaml

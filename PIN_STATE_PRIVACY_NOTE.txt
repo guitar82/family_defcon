@@ -1,0 +1,15 @@
+Family DEFCON v5.8.6 PIN State Privacy
+
+Before v5.8.6:
+text.family_defcon_dashboard_pin exposed the raw entered PIN as the Home Assistant state.
+
+After v5.8.6:
+text.family_defcon_dashboard_pin exposes only masked bullets.
+Example:
+●●●●
+
+The real PIN is still held in integration memory while entering and confirming.
+Confirm and Launch use the internal value, not the exposed entity state.
+
+Recommended:
+Exclude text.family_defcon_dashboard_pin from recorder/history if you want no PIN display history at all, even masked.

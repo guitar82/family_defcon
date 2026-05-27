@@ -1,17 +1,18 @@
 """Button entities for Family DEFCON dashboard launch interface.
 
-Stable v5.8.3 note:
+Stable v5.8.5 note:
 This file is based on the working v5.8 backend. It only improves dashboard button behavior:
 - Confirm validates the PIN before turning target confirmation on.
 - Wrong PIN keeps dashboard_confirm false.
 - Launch button sends launch_with_pin non-blocking so the dashboard responds quickly.
-- Newly saved UI PIN hashes use fewer PBKDF2 iterations for faster local dashboard response.
+- Newly saved UI PIN hashes use instant salted SHA256 for faster local dashboard response.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 import hashlib
 import hmac
+import re
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
@@ -20,29 +21,63 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dis
 from .const import DOMAIN, SIGNAL_UPDATE
 
 
+def _slugify_target(value: str) -> str:
+    """Create a safe entity id suffix from a configured target name."""
+    slug = re.sub(r"[^a-z0-9_]+", "_", str(value).lower()).strip("_")
+    return slug or "target"
+
+
+def _dashboard_targets_from_config(config: dict) -> list[str]:
+    """Return the same active dashboard targets used by the dashboard select entity."""
+    dashboard = config.get("dashboard", {})
+    configured = dashboard.get("targets") if isinstance(dashboard, dict) else None
+    people = set(config.get("people", []))
+
+    if isinstance(configured, list) and configured:
+        return [str(item) for item in configured if not people or str(item) in people]
+
+    fallback = list(dict.fromkeys(config.get("default_targets", []) + config.get("parent_targets", [])))
+    return [str(item) for item in fallback if not people or str(item) in people]
+
+
 async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([
+    config_data = hass.data[DOMAIN]["config"]
+    entities = [
         DashboardConfirmButton(hass),
         DashboardLaunchButton(hass),
         DashboardCancelButton(hass),
-    ], True)
+    ]
+
+    for target in _dashboard_targets_from_config(config_data):
+        entities.append(DashboardSelectTargetButton(hass, target))
+
+    async_add_entities(entities, True)
 
 
 def _verify_pin_value(pin: str, user_data: dict) -> bool:
-    """Verify either hashed PIN or legacy plain PIN without exposing values."""
+    """Verify fast SHA256 hashes, old PBKDF2 hashes, or legacy plain text PINs."""
     stored_hash = str(user_data.get("pin_hash", "") or "")
     if stored_hash:
         try:
-            algo, iterations_raw, salt, expected = stored_hash.split("$", 3)
-            if algo != "pbkdf2_sha256":
-                return False
-            digest = hashlib.pbkdf2_hmac(
-                "sha256",
-                str(pin).encode(),
-                salt.encode(),
-                int(iterations_raw),
-            ).hex()
-            return hmac.compare_digest(digest, expected)
+            parts = stored_hash.split("$")
+            algo = parts[0]
+
+            if algo == "sha256" and len(parts) == 3:
+                _, salt, expected = parts
+                digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+                return hmac.compare_digest(digest, expected)
+
+            if algo == "pbkdf2_sha256" and len(parts) == 4:
+                _, iterations_raw, salt, expected = parts
+                digest = hashlib.pbkdf2_hmac(
+                    "sha256",
+                    str(pin).encode(),
+                    salt.encode(),
+                    int(iterations_raw),
+                ).hex()
+                return hmac.compare_digest(digest, expected)
+
+            return False
         except Exception:
             return False
 
@@ -107,6 +142,33 @@ class BaseDashboardButton(ButtonEntity):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
         )
+
+
+class DashboardSelectTargetButton(BaseDashboardButton):
+    """One dynamic target select button per configured dashboard target."""
+
+    def __init__(self, hass: HomeAssistant, target_name: str) -> None:
+        super().__init__(hass)
+        self.target_name = str(target_name)
+        self.target_slug = _slugify_target(self.target_name)
+        self._attr_name = f"Select Target {self.target_name}"
+        self._attr_unique_id = f"family_defcon_select_target_{self.target_slug}"
+        self._attr_icon = "mdi:account-crosshairs"
+
+    @property
+    def available(self) -> bool:
+        return self.target_name in _dashboard_targets_from_config(self.config_data)
+
+    async def async_press(self) -> None:
+        if not self.available:
+            self.state_data["last_event"] = f"Dashboard target rejected. {self.target_name} is not configured."
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            return
+
+        self.state_data["dashboard_target"] = self.target_name
+        self.state_data["dashboard_confirm"] = False
+        self.state_data["last_event"] = f"Dashboard target selected: {self.target_name}. Enter PIN and confirm."
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
 class DashboardConfirmButton(BaseDashboardButton):

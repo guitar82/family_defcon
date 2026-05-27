@@ -1,4 +1,4 @@
-Family DEFCON v5.8.3 Fast PIN Steps
+Family DEFCON v5.8.5 Instant PIN Steps
 
 1. Install this package.
 2. Restart Home Assistant.
@@ -8,4 +8,6 @@ Family DEFCON v5.8.3 Fast PIN Steps
 6. Save.
 7. Restart Home Assistant or run family_defcon.reload_config.
 
-Old hashes remain slow until the PINs are re-entered.
+Old PBKDF2 hashes remain slow until the PINs are re-entered.
+New hashes use format:
+sha256$salt$digest
