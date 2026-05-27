@@ -1,0 +1,12 @@
+{
+  "domain": "family_defcon",
+  "name": "Family DEFCON",
+  "codeowners": [],
+  "config_flow": false,
+  "documentation": "https://github.com/guitar82/family_defcon",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "3.0.0",
+  "issue_tracker": "https://github.com/guitar82/family_defcon/issues"
+}
