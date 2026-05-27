@@ -1,9 +1,0 @@
-Family DEFCON Final v3.0 verification
-Python compile: OK
-Dashboard platforms: text/select/button included
-Dashboard entities: PIN/target/confirm/launch/cancel included
-Dashboard people sensor: included
-Keypad services: included
-AdGuard endpoints: status + set_rules only
-Old AdGuard add_url/remove_url endpoints: not present
-Public package real family names: not present
