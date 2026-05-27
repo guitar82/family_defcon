@@ -1,14 +1,11 @@
-Family DEFCON v5.2 Guided UI Config verification
+Family DEFCON v5.4 Migration + Hidden Hashed PINs verification
 Python compile: OK
-manifest version 5.2.0: OK
-Guided people setup page added: OK
-Separate person fields added: OK
-Per-person PIN and PIN hash fields added: OK
-Per-person AdGuard client fields added: OK
-Per-person target checkboxes added: OK
-Guided station setup page added: OK
-Options menu section labels fixed: OK
-Advanced raw YAML import retained: OK
-family_defcon.yaml fallback preserved: OK
+manifest version 5.4.0: OK
+async_migrate_entry added: OK
+Config entry version normalization added: OK
+Existing options are preserved: OK
+Missing guided UI defaults are added: OK
+Hidden hashed PIN behavior preserved: OK
+Password selector for PINs preserved: OK
 README updated: OK
 RELEASE_NOTES updated: OK

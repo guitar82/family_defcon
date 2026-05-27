@@ -1,5 +1,20 @@
 # Family DEFCON Release Notes
 
+## v5.4.0
+
+- Added `async_migrate_entry` to fix Home Assistant config entry migration errors.
+- Migration preserves existing settings and adds missing guided UI defaults.
+- Keeps hidden hashed PIN behavior from v5.3.
+- Keeps config flow version stable at 4 for the guided UI series.
+
+## v5.3.0
+
+- Made guided UI PIN fields password/hidden fields.
+- Plain PINs entered in the UI are hashed immediately and not stored.
+- Existing PIN hashes are preserved when the new PIN field is left blank.
+- Default demo PINs are stored as hashes in options instead of plain PINs.
+- Updated labels to make the PIN field clearly write-only.
+
 ## v5.2.0
 
 - Replaced confusing YAML-only config pages with guided fields.

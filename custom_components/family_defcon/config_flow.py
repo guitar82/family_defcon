@@ -3,15 +3,32 @@ from __future__ import annotations
 
 from typing import Any
 
+import hashlib
+import secrets
+
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.helpers import selector
 
 from .const import DOMAIN
 
 
 PEOPLE_SLOTS = 8
 STATION_SLOTS = 8
+
+
+def hash_pin_for_options(pin: str, iterations: int = 200000) -> str:
+    """Return a PBKDF2-SHA256 hash string for a PIN entered in the options UI."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt.encode(), iterations)
+    return f"pbkdf2_sha256${iterations}${salt}${digest.hex()}"
+
+
+PIN_PASSWORD_SELECTOR = selector.TextSelector(
+    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+)
+
 
 
 def _int_range(default: int, minimum: int = 0, maximum: int = 9999):
@@ -37,7 +54,7 @@ def _person_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
         out.append({
             "name": name,
             "role": role,
-            "pin": pins.get(name, "") if isinstance(pins, dict) else "",
+            "pin": "",
             "pin_hash": pin_hashes.get(name, "") if isinstance(pin_hashes, dict) else "",
             "adguard_client": clients.get(name, name) if isinstance(clients, dict) else name,
             "default_target": name in default_targets or (role == "child" and name not in ("Mom", "Dad")),
@@ -79,12 +96,15 @@ def _station_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
 def _build_people_options(user_input: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
     people = []
     roles = {}
+    # Plain PINs are intentionally not persisted. They are write-only fields.
     pins = {}
     pin_hashes = {}
     clients = {}
     default_targets = []
     parent_targets = []
     dashboard_targets = []
+
+    existing_pin_hashes = existing.get("people_pin_hashes", {}) if isinstance(existing.get("people_pin_hashes", {}), dict) else {}
 
     for i in range(1, PEOPLE_SLOTS + 1):
         name = str(user_input.get(f"person_{i}_name", "")).strip()
@@ -93,14 +113,19 @@ def _build_people_options(user_input: dict[str, Any], existing: dict[str, Any]) 
         people.append(name)
         role = str(user_input.get(f"person_{i}_role", "child"))
         roles[name] = role
-        pin = str(user_input.get(f"person_{i}_pin", "")).strip()
-        pin_hash = str(user_input.get(f"person_{i}_pin_hash", "")).strip()
+
+        new_pin = str(user_input.get(f"person_{i}_pin", "")).strip()
+        typed_hash = str(user_input.get(f"person_{i}_pin_hash", "")).strip()
         client = str(user_input.get(f"person_{i}_adguard_client", "")).strip() or name
 
-        if pin:
-            pins[name] = pin
-        if pin_hash:
-            pin_hashes[name] = pin_hash
+        # New PIN is write-only. Hash immediately and never store the plain value.
+        if new_pin:
+            pin_hashes[name] = hash_pin_for_options(new_pin)
+        elif typed_hash:
+            pin_hashes[name] = typed_hash
+        elif name in existing_pin_hashes:
+            pin_hashes[name] = str(existing_pin_hashes[name])
+
         clients[name] = client
 
         if bool(user_input.get(f"person_{i}_default_target", False)):
@@ -167,8 +192,14 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "cooldown_seconds": int(user_input.get("cooldown_seconds", 30)),
                     "people_list": ["Mom", "Dad", "Henry", "Marc", "Maggie"],
                     "people_roles": {"Mom": "parent", "Dad": "parent", "Henry": "child", "Marc": "child", "Maggie": "child"},
-                    "people_pins": {"Mom": "1111", "Dad": "2222", "Henry": "3333", "Marc": "4444", "Maggie": "5555"},
-                    "people_pin_hashes": {},
+                    "people_pins": {},
+                    "people_pin_hashes": {
+                        "Mom": hash_pin_for_options("1111"),
+                        "Dad": hash_pin_for_options("2222"),
+                        "Henry": hash_pin_for_options("3333"),
+                        "Marc": hash_pin_for_options("4444"),
+                        "Maggie": hash_pin_for_options("5555"),
+                    },
                     "people_adguard_clients": {"Mom": "Mom", "Dad": "Dad", "Henry": "Henry", "Marc": "Marc", "Maggie": "Maggie"},
                     "default_targets_list": ["Henry", "Marc", "Maggie"],
                     "parent_targets_list": ["Mom", "Dad"],
@@ -243,7 +274,7 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
             prefix = f"person_{idx}"
             fields[vol.Optional(f"{prefix}_name", default=person["name"])] = str
             fields[vol.Optional(f"{prefix}_role", default=person["role"])] = vol.In(["parent", "child"])
-            fields[vol.Optional(f"{prefix}_pin", default=person["pin"])] = str
+            fields[vol.Optional(f"{prefix}_pin", default="")] = PIN_PASSWORD_SELECTOR
             fields[vol.Optional(f"{prefix}_pin_hash", default=person["pin_hash"])] = str
             fields[vol.Optional(f"{prefix}_adguard_client", default=person["adguard_client"])] = str
             fields[vol.Optional(f"{prefix}_default_target", default=person["default_target"])] = bool

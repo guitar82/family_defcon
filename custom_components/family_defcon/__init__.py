@@ -66,6 +66,78 @@ HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 
 
 
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old Family DEFCON config entries safely.
+
+    Older test builds changed the config flow VERSION without providing a migration
+    handler, which can cause Home Assistant to report that the migration agent is
+    not available. This migration is intentionally conservative. It preserves the
+    user's existing data/options and only adds missing defaults used by newer UI
+    option flows.
+    """
+    _LOGGER.info(
+        "Migrating Family DEFCON config entry from version %s.%s",
+        entry.version,
+        entry.minor_version,
+    )
+
+    options = dict(entry.options or {})
+    options.setdefault("use_ui_config", bool(options.get("use_ui_config", False)))
+    options.setdefault("cooldown_seconds", int(options.get("cooldown_seconds", 30)))
+    options.setdefault("launches_before_mutual_destruction", int(options.get("launches_before_mutual_destruction", 5)))
+    options.setdefault("chain_before_mutual_destruction", int(options.get("chain_before_mutual_destruction", 4)))
+    options.setdefault("daily_reset_time", str(options.get("daily_reset_time", "05:00:00")))
+    options.setdefault("max_event_log", int(options.get("max_event_log", 25)))
+    options.setdefault("allow_parent_targets_default", bool(options.get("allow_parent_targets_default", False)))
+    options.setdefault("require_station_match", bool(options.get("require_station_match", False)))
+    options.setdefault("require_key_for_launch", bool(options.get("require_key_for_launch", False)))
+    options.setdefault("pin_timeout_seconds", int(options.get("pin_timeout_seconds", 60)))
+    options.setdefault("max_bad_pin_attempts", int(options.get("max_bad_pin_attempts", 3)))
+    options.setdefault("lockout_seconds_after_bad_pins", int(options.get("lockout_seconds_after_bad_pins", 120)))
+
+    options.setdefault("dns_enabled", bool(options.get("dns_enabled", True)))
+    options.setdefault("enforcement_mode", str(options.get("enforcement_mode", "active")))
+    options.setdefault("mutual_destruction_scope", str(options.get("mutual_destruction_scope", "default_targets")))
+    options.setdefault("adguard_base_url", str(options.get("adguard_base_url", "")))
+    options.setdefault("adguard_username_secret", str(options.get("adguard_username_secret", "adguard_username")))
+    options.setdefault("adguard_password_secret", str(options.get("adguard_password_secret", "adguard_password")))
+    options.setdefault("adguard_rule_prefix", str(options.get("adguard_rule_prefix", "Family DEFCON Block")))
+
+    options.setdefault("first_strike_target_minutes", int(options.get("first_strike_target_minutes", 30)))
+    options.setdefault("retaliator_extra_minutes", int(options.get("retaliator_extra_minutes", 15)))
+    options.setdefault("retaliation_target_minutes", int(options.get("retaliation_target_minutes", 30)))
+    options.setdefault("reattacker_extra_minutes", int(options.get("reattacker_extra_minutes", 15)))
+    options.setdefault("reattack_target_minutes", int(options.get("reattack_target_minutes", 45)))
+
+    # Guided UI defaults only if no existing guided config exists.
+    options.setdefault("people_list", options.get("people_list", []))
+    options.setdefault("people_roles", options.get("people_roles", {}))
+    options.setdefault("people_pins", {})
+    options.setdefault("people_pin_hashes", options.get("people_pin_hashes", {}))
+    options.setdefault("people_adguard_clients", options.get("people_adguard_clients", {}))
+    options.setdefault("default_targets_list", options.get("default_targets_list", []))
+    options.setdefault("parent_targets_list", options.get("parent_targets_list", []))
+    options.setdefault("dashboard_targets_list", options.get("dashboard_targets_list", []))
+    options.setdefault("dashboard_station_id", str(options.get("dashboard_station_id", "dashboard")))
+    options.setdefault("dashboard_default_target", str(options.get("dashboard_default_target", "")))
+    options.setdefault("stations_list", options.get("stations_list", []))
+
+    data = dict(entry.data or {})
+    data.setdefault("name", data.get("name", "Family DEFCON"))
+    data.setdefault("config_file", data.get("config_file", CONFIG_PATH))
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data=data,
+        options=options,
+        version=4,
+        minor_version=0,
+    )
+    _LOGGER.info("Family DEFCON config entry migration complete.")
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Family DEFCON from a UI config entry."""
     config_file = entry.data.get("config_file", CONFIG_PATH)
@@ -254,7 +326,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     user_data = {"role": str(roles.get(person, "child"))}
                     if str(pin_hashes.get(person, "")).strip():
                         user_data["pin_hash"] = str(pin_hashes.get(person, "")).strip()
-                    if str(pins.get(person, "")).strip():
+                    elif str(pins.get(person, "")).strip():
+                        # Legacy fallback only. Guided UI does not store plain PINs.
                         user_data["pin"] = str(pins.get(person, "")).strip()
                     normalized["auth"]["users"][person] = user_data
 
