@@ -651,6 +651,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def update_entities() -> None:
         async_dispatcher_send(hass, SIGNAL_UPDATE)
 
+    def fire_family_event(event_name: str, **data) -> None:
+        """Expose Family DEFCON actions as Home Assistant events for automations."""
+        hass.bus.async_fire(f"family_defcon_{event_name}", data)
+
     async def log_event(message: str) -> None:
         st()["last_event"] = message
         event_log = st().setdefault("event_log", [])
@@ -959,23 +963,35 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         base = current if isinstance(current, datetime) and current > now else now
         st()["blocked_until"][person] = base + timedelta(minutes=minutes)
 
+    async def reject_launch(reason: str, launcher: str = "", target: str = "", station: str = "") -> None:
+        message = f"Launch rejected. {reason}"
+        await log_event(message)
+        fire_family_event(
+            "launch_rejected",
+            reason=reason,
+            launcher=launcher,
+            target=target,
+            station=station,
+            message=message,
+        )
+
     async def apply_launch(launcher: str, target: str, station: str) -> None:
         if not st()["armed"]:
-            await log_event("Launch rejected. Command system is not armed.")
+            await reject_launch("Command system is not armed.", launcher, target, station)
             return
         if launcher not in conf()["people"]:
-            await log_event(f"Launch rejected. Unknown launcher {launcher}.")
+            await reject_launch(f"Unknown launcher {launcher}.", launcher, target, station)
             return
         if target not in valid_targets():
-            await log_event(f"Launch rejected. {target} is protected.")
+            await reject_launch(f"{target} is protected.", launcher, target, station)
             return
         if launcher == target:
-            await log_event("Launch rejected. Self targeting is not allowed.")
+            await reject_launch("Self targeting is not allowed.", launcher, target, station)
             return
 
         ok, reason = await validate_station(launcher, station)
         if not ok:
-            await log_event(reason)
+            await reject_launch(reason.replace("Launch rejected. ", ""), launcher, target, station)
             return
 
         new_launches = st()["daily_launches"] + 1
@@ -990,37 +1006,85 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         p = conf()["penalties"]
         if new_launches >= conf()["launches_before_mutual_destruction"] or new_chain >= conf()["chain_before_mutual_destruction"]:
             st()["mutual_destruction"] = True
-            await log_event(f"DEFCON 1. Mutual WiFi Destruction activated by {launcher} targeting {target}.")
+            message = f"DEFCON 1. Mutual WiFi Destruction activated by {launcher} targeting {target}."
+            await log_event(message)
+            fire_family_event(
+                "mutual_destruction",
+                launcher=launcher,
+                target=target,
+                station=station,
+                defcon_level=1,
+                daily_launches=new_launches,
+                conflict_chain=new_chain,
+                message=message,
+            )
+            fire_family_event(
+                "launch",
+                launcher=launcher,
+                target=target,
+                station=station,
+                defcon_level=1,
+                daily_launches=new_launches,
+                conflict_chain=new_chain,
+                mutual_destruction=True,
+                minutes=0,
+                message=message,
+            )
             await enforce_now()
             return
 
+        event_minutes = 0
+        event_kind = "launch"
+
         if new_chain == 1:
-            await add_timeout(target, p["first_strike_target_minutes"])
+            event_minutes = p["first_strike_target_minutes"]
+            await add_timeout(target, event_minutes)
             level = current_defcon_level()
-            await log_event(
+            message = (
                 f"DEFCON {level}. {launcher} launched at {target}. "
-                f"{target} receives {p['first_strike_target_minutes']} minute timeout."
+                f"{target} receives {event_minutes} minute timeout."
             )
+            await log_event(message)
         elif new_chain == 2:
+            event_kind = "retaliation"
             await add_timeout(launcher, p["retaliator_extra_minutes"])
-            await add_timeout(target, p["retaliation_target_minutes"])
+            event_minutes = p["retaliation_target_minutes"]
+            await add_timeout(target, event_minutes)
             level = current_defcon_level()
-            await log_event(
+            message = (
                 f"DEFCON {level}. Retaliation detected. "
                 f"{launcher} receives +{p['retaliator_extra_minutes']} minutes. "
-                f"{target} receives {p['retaliation_target_minutes']} minutes."
+                f"{target} receives {event_minutes} minutes."
             )
+            await log_event(message)
         elif new_chain >= 3:
+            event_kind = "escalation"
             await add_timeout(launcher, p["reattacker_extra_minutes"])
-            await add_timeout(target, p["reattack_target_minutes"])
+            event_minutes = p["reattack_target_minutes"]
+            await add_timeout(target, event_minutes)
             level = current_defcon_level()
             next_warning = " Next retaliation triggers mutual destruction." if level == 2 else ""
-            await log_event(
+            message = (
                 f"DEFCON {level}. Escalation warning. "
                 f"{launcher} receives +{p['reattacker_extra_minutes']} minutes. "
-                f"{target} receives {p['reattack_target_minutes']} minutes."
+                f"{target} receives {event_minutes} minutes."
                 f"{next_warning}"
             )
+            await log_event(message)
+
+        fire_family_event(
+            "launch",
+            launcher=launcher,
+            target=target,
+            station=station,
+            defcon_level=level,
+            daily_launches=new_launches,
+            conflict_chain=new_chain,
+            kind=event_kind,
+            minutes=event_minutes,
+            mutual_destruction=False,
+            message=message,
+        )
 
         await enforce_now()
 
@@ -1032,14 +1096,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         pin = str(call.data.get("pin", ""))
 
         if len(pin) > 4:
-            await log_event(f"Launch rejected. PIN longer than 4 characters at {station or 'unknown station'}.")
+            message = f"Launch rejected. PIN longer than 4 characters at {station or 'unknown station'}."
+            await log_event(message)
+            fire_family_event("launch_rejected", reason="PIN longer than 4 characters.", station=station, message=message)
             return
         locked_raw = st()["pin_locked_until"].get(station)
         if locked_raw:
             try:
                 locked_until = datetime.fromisoformat(locked_raw)
                 if locked_until > datetime.now():
-                    await log_event(f"PIN entry locked at {station} until {locked_until.strftime('%H:%M:%S')}.")
+                    message = f"PIN entry locked at {station} until {locked_until.strftime('%H:%M:%S')}."
+                    await log_event(message)
+                    fire_family_event(
+                        "pin_lockout",
+                        station=station,
+                        locked_until=locked_until.isoformat(),
+                        message=message,
+                    )
                     return
             except Exception:
                 pass
@@ -1066,15 +1139,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 until = datetime.now() + timedelta(seconds=conf()["auth"]["lockout_seconds_after_bad_pins"])
                 st()["pin_locked_until"][station] = until.isoformat()
                 st()["pin_bad_attempts"][station] = 0
-                await log_event(
+                message = (
                     f"Too many bad PIN attempts at {station}. Terminal locked temporarily. "
                     f"Auth source: {source}. Advanced YAML overrides: {advanced}."
                 )
+                await log_event(message)
+                fire_family_event(
+                    "pin_lockout",
+                    station=station,
+                    attempts=attempts,
+                    locked_until=until.isoformat(),
+                    message=message,
+                )
             else:
-                await log_event(
+                message = (
                     f"Bad PIN attempt at {station}. Auth source: {source}. "
                     f"Advanced YAML overrides: {advanced}. "
                     f"Hashed PIN users: {', '.join(hashed_users) if hashed_users else 'none'}."
+                )
+                await log_event(message)
+                fire_family_event(
+                    "bad_pin",
+                    station=station,
+                    attempts=attempts,
+                    max_attempts=conf()["auth"]["max_bad_pin_attempts"],
+                    message=message,
                 )
             return
 
@@ -1090,6 +1179,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         for person in conf()["people"]:
             st()["blocked_until"][person] = None
         await log_event("All DEFCON timeouts cleared.")
+        fire_family_event("clear_all", message="All DEFCON timeouts cleared.")
         await enforce_now()
 
     async def handle_stand_down(call: ServiceCall) -> None:

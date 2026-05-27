@@ -1,5 +1,20 @@
 # Family DEFCON Release Notes
 
+## v5.8.4
+
+- Built from the stable v5.8.3 line.
+- Added native Home Assistant events for launches, rejected launches, bad PINs, PIN lockouts, mutual destruction, and clear all.
+- Added `examples/automation_event_announcements.yaml` for TTS and sound effects.
+- Does not include v5.9 or v5.10 backend startup changes.
+
+## v5.8.3
+
+- Built from the stable v5.8.2 line.
+- Reduced new UI PIN hash iterations from 200,000 to 10,000 for faster dashboard confirm and launch.
+- Keeps PINs hidden and hashed in options.
+- Requires re-entering each PIN in the UI to replace old slow hashes.
+- Does not include v5.9 or v5.10 backend startup changes.
+
 ## v5.8.2
 
 - Built directly from stable v5.8.

@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.8.2**
+**Current release: v5.8.4**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -969,4 +969,71 @@ Confirm validates the PIN before turning the target confirmed state green
 Wrong PIN keeps dashboard_confirm false
 Bad PIN and lockout warnings appear through sensor.family_defcon_last_event
 Launch button uses non-blocking launch_with_pin so the dashboard responds faster
+```
+
+
+## v5.8.3 Stable Fast PINs
+
+v5.8.3 is built from the stable v5.8.2 line. It does not include the v5.9 or v5.10 startup/service changes.
+
+Change:
+
+```text
+New PINs saved from the UI now use PBKDF2-SHA256 with 10,000 iterations instead of 200,000.
+```
+
+Why:
+
+```text
+Dashboard PINs are only 4 digits.
+Security goal is to hide PINs from casual viewing, not high-security password storage.
+Confirm was slow because the integration checks the entered PIN against each configured person.
+```
+
+After installing v5.8.3:
+
+```text
+Settings → Devices & services → Family DEFCON → Configure → People, PINs, and AdGuard clients
+Re-enter each person's 4 digit PIN
+Save
+Restart Home Assistant or reload Family DEFCON
+```
+
+Old PIN hashes will keep their old speed until you re-enter the PINs.
+
+
+## v5.8.4 Stable Events
+
+v5.8.4 is built from the stable v5.8.3 line. It does not include the v5.9 or v5.10 backend startup changes.
+
+Native Home Assistant events added:
+
+```text
+family_defcon_launch
+family_defcon_launch_rejected
+family_defcon_bad_pin
+family_defcon_pin_lockout
+family_defcon_mutual_destruction
+family_defcon_clear_all
+```
+
+The launch event includes data like:
+
+```yaml
+launcher: Dad
+target: Henry
+station: dashboard
+defcon_level: 4
+daily_launches: 1
+conflict_chain: 1
+kind: launch
+minutes: 30
+mutual_destruction: false
+message: DEFCON 4. Dad launched at Henry. Henry receives 30 minute timeout.
+```
+
+Example automations were added here:
+
+```text
+examples/automation_event_announcements.yaml
 ```

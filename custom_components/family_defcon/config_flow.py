@@ -19,7 +19,8 @@ STATION_SLOTS = 8
 MAX_PIN_LENGTH = 4
 
 
-def hash_pin_for_options(pin: str, iterations: int = 200000) -> str:
+# FAMILY_DEFCON_FAST_PIN_HASH_ITERATIONS: optimized for 4 digit local dashboard PINs.
+def hash_pin_for_options(pin: str, iterations: int = 10000) -> str:
     """Return a PBKDF2-SHA256 hash string for a PIN entered in the options UI."""
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", str(pin).encode(), salt.encode(), iterations)

@@ -1,10 +1,11 @@
 """Button entities for Family DEFCON dashboard launch interface.
 
-Stable v5.8.2 note:
+Stable v5.8.3 note:
 This file is based on the working v5.8 backend. It only improves dashboard button behavior:
 - Confirm validates the PIN before turning target confirmation on.
 - Wrong PIN keeps dashboard_confirm false.
 - Launch button sends launch_with_pin non-blocking so the dashboard responds quickly.
+- Newly saved UI PIN hashes use fewer PBKDF2 iterations for faster local dashboard response.
 """
 from __future__ import annotations
 
