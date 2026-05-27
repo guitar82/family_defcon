@@ -1,7 +1,7 @@
 """Text entities for Family DEFCON dashboard launch interface."""
 from __future__ import annotations
 
-from homeassistant.components.text import TextEntity, TextMode
+from homeassistant.components.text import TextEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
@@ -16,19 +16,22 @@ class DashboardPinText(TextEntity):
     _attr_name = "Dashboard PIN"
     _attr_unique_id = "family_defcon_dashboard_pin"
     _attr_has_entity_name = True
-    _attr_mode = TextMode.PASSWORD
+    _attr_mode = "password"
     _attr_native_max = 12
+    _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
 
     @property
     def native_value(self) -> str:
-        return self.hass.data[DOMAIN]["state"].get("dashboard_pin", "")
+        return str(self.hass.data[DOMAIN]["state"].get("dashboard_pin", ""))
 
     async def async_set_value(self, value: str) -> None:
         self.hass.data[DOMAIN]["state"]["dashboard_pin"] = str(value)
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
-        self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state))
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+        )

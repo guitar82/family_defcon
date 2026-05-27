@@ -50,6 +50,8 @@ LAUNCH_WITH_PIN_SCHEMA = vol.Schema({
 
 BOOL_SCHEMA = vol.Schema({vol.Required("enabled"): cv.boolean})
 PERSON_SCHEMA = vol.Schema({vol.Required("person"): cv.string})
+DASHBOARD_KEYPRESS_SCHEMA = vol.Schema({vol.Required("digit"): cv.string})
+DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -568,6 +570,28 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             await log_event(f"{person} manually unblocked.")
             await enforce_now()
 
+    async def handle_dashboard_keypress(call: ServiceCall) -> None:
+        digit = str(call.data["digit"])
+        if digit not in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+            return
+        current = str(st().get("dashboard_pin", ""))
+        st()["dashboard_pin"] = (current + digit)[-12:]
+        await update_entities()
+
+    async def handle_dashboard_backspace(call: ServiceCall) -> None:
+        current = str(st().get("dashboard_pin", ""))
+        st()["dashboard_pin"] = current[:-1]
+        await update_entities()
+
+    async def handle_dashboard_clear_pin(call: ServiceCall) -> None:
+        st()["dashboard_pin"] = ""
+        await update_entities()
+
+    async def handle_dashboard_set_pin(call: ServiceCall) -> None:
+        pin = str(call.data["pin"])
+        st()["dashboard_pin"] = pin[-12:]
+        await update_entities()
+
     def dashboard_config() -> dict:
         dash = conf().get("dashboard", {})
         return dash if isinstance(dash, dict) else {}
@@ -644,6 +668,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "reload_config", handle_reload_config)
     hass.services.async_register(DOMAIN, "block_person", handle_block_person, schema=PERSON_SCHEMA)
     hass.services.async_register(DOMAIN, "unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
+    hass.services.async_register(DOMAIN, "dashboard_keypress", handle_dashboard_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    hass.services.async_register(DOMAIN, "dashboard_backspace", handle_dashboard_backspace)
+    hass.services.async_register(DOMAIN, "dashboard_clear_pin", handle_dashboard_clear_pin)
+    hass.services.async_register(DOMAIN, "dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
 
     async def periodic(now: datetime) -> None:
         today = datetime.now().date().isoformat()
@@ -667,11 +695,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         targets = dashboard_targets()
         st()["dashboard_target"] = targets[0] if targets else ""
 
-    await async_load_platform(hass, "sensor", DOMAIN, {}, config)
-    await async_load_platform(hass, "switch", DOMAIN, {}, config)
-    await async_load_platform(hass, "binary_sensor", DOMAIN, {}, config)
-    await async_load_platform(hass, "text", DOMAIN, {}, config)
-    await async_load_platform(hass, "select", DOMAIN, {}, config)
-    await async_load_platform(hass, "button", DOMAIN, {}, config)
+    for platform in ("sensor", "switch", "binary_sensor", "text", "select", "button"):
+        try:
+            await async_load_platform(hass, platform, DOMAIN, {}, config)
+        except Exception:
+            _LOGGER.exception("Family DEFCON failed to load %s platform", platform)
 
     return True

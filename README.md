@@ -477,3 +477,38 @@ It does not automatically overwrite your local:
 ```
 
 That means your personal people, PINs, stations, and AdGuard settings remain local.
+
+
+## v2.1 Dashboard platform fix
+
+v2.1 fixes dashboard control entity loading by:
+
+- Loading Family DEFCON platforms defensively
+- Making the text entity compatible across Home Assistant versions
+- Keeping the config driven people sensor
+- Keeping built in dashboard entities:
+  - `text.family_defcon_dashboard_pin`
+  - `select.family_defcon_dashboard_target`
+  - `button.family_defcon_dashboard_confirm_targeting`
+  - `button.family_defcon_dashboard_launch`
+  - `button.family_defcon_dashboard_cancel`
+
+
+## v2.2 Dashboard keypad
+
+v2.2 adds dashboard keypad services:
+
+```text
+family_defcon.dashboard_keypress
+family_defcon.dashboard_backspace
+family_defcon.dashboard_clear_pin
+family_defcon.dashboard_set_pin
+```
+
+The recommended dashboard card is now:
+
+```text
+examples/button_card_keypad_dashboard.yaml
+```
+
+It shows a keypad instead of relying only on text entry.

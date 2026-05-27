@@ -70,3 +70,43 @@ unblock_person:
       name: Person
       required: true
       selector: {text: {}}
+
+dashboard_keypress:
+  name: Dashboard Keypress
+  description: Add one digit to the dashboard PIN entry.
+  fields:
+    digit:
+      name: Digit
+      required: true
+      selector:
+        select:
+          options:
+            - "0"
+            - "1"
+            - "2"
+            - "3"
+            - "4"
+            - "5"
+            - "6"
+            - "7"
+            - "8"
+            - "9"
+
+dashboard_backspace:
+  name: Dashboard Backspace
+  description: Remove the last digit from the dashboard PIN entry.
+
+dashboard_clear_pin:
+  name: Dashboard Clear PIN
+  description: Clear the dashboard PIN entry.
+
+dashboard_set_pin:
+  name: Dashboard Set PIN
+  description: Set the dashboard PIN entry.
+  fields:
+    pin:
+      name: PIN
+      required: true
+      selector:
+        text:
+          type: password
