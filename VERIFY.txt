@@ -1,0 +1,15 @@
+Family DEFCON v5.1 Full UI Config verification
+Python compile: OK
+manifest version 5.1.0: OK
+Options menu added: OK
+System settings UI section: OK
+People and targets UI section: OK
+PINs and roles UI section: OK
+Stations and dashboard UI section: OK
+AdGuard UI section: OK
+Penalties UI section: OK
+UI YAML parsing added: OK
+UI config overrides YAML when enabled: OK
+family_defcon.yaml fallback preserved: OK
+README updated: OK
+RELEASE_NOTES updated: OK

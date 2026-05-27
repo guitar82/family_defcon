@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Family DEFCON",
+        "description": "Set up Family DEFCON. Turn on UI config to manage almost all settings from the integration options page.",
+        "data": {
+          "name": "Name",
+          "config_file": "Fallback config file",
+          "use_ui_config": "Manage settings in the UI",
+          "cooldown_seconds": "Launch cooldown seconds",
+          "adguard_base_url": "AdGuard Home URL",
+          "dns_enabled": "Enable DNS enforcement",
+          "enforcement_mode": "Enforcement mode",
+          "mutual_destruction_scope": "Mutual destruction scope"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Family DEFCON is already configured."
+    }
+  },
+  "options": {
+    "menu": {
+      "init": {
+        "system": "System settings",
+        "people_targets": "People and targets",
+        "auth_pins": "PINs and roles",
+        "stations_dashboard": "Stations and dashboard",
+        "adguard": "AdGuard settings",
+        "penalties": "Penalty times"
+      }
+    },
+    "step": {
+      "system": {
+        "title": "System settings",
+        "description": "Core Family DEFCON behavior.",
+        "data": {
+          "use_ui_config": "Manage settings in the UI",
+          "cooldown_seconds": "Launch cooldown seconds",
+          "launches_before_mutual_destruction": "Daily launches before mutual destruction",
+          "chain_before_mutual_destruction": "Conflict chain before mutual destruction",
+          "daily_reset_time": "Daily reset time",
+          "max_event_log": "Maximum event log entries",
+          "allow_parent_targets_default": "Allow parent targets by default",
+          "require_station_match": "Require station match",
+          "require_key_for_launch": "Require key for launch"
+        }
+      },
+      "people_targets": {
+        "title": "People and targets",
+        "description": "Enter YAML lists. Example: `- Henry`",
+        "data": {
+          "people_yaml": "People YAML",
+          "default_targets_yaml": "Default targets YAML",
+          "parent_targets_yaml": "Parent targets YAML"
+        }
+      },
+      "auth_pins": {
+        "title": "PINs and roles",
+        "description": "Enter YAML mapping by person. Prefer pin_hash. Generate hashes with the family_defcon.hash_pin service.",
+        "data": {
+          "auth_users_yaml": "Auth users YAML",
+          "pin_timeout_seconds": "PIN timeout seconds",
+          "max_bad_pin_attempts": "Maximum bad PIN attempts",
+          "lockout_seconds_after_bad_pins": "Lockout seconds after bad PIN attempts"
+        }
+      },
+      "stations_dashboard": {
+        "title": "Stations and dashboard",
+        "description": "Enter stations as YAML mapping and dashboard target list as YAML list.",
+        "data": {
+          "stations_yaml": "Stations YAML",
+          "dashboard_station_id": "Dashboard station ID",
+          "dashboard_default_target": "Dashboard default target",
+          "dashboard_targets_yaml": "Dashboard targets YAML"
+        }
+      },
+      "adguard": {
+        "title": "AdGuard settings",
+        "description": "AdGuard client names must match persistent client names in AdGuard Home.",
+        "data": {
+          "dns_enabled": "Enable DNS enforcement",
+          "adguard_base_url": "AdGuard Home URL",
+          "enforcement_mode": "Enforcement mode",
+          "mutual_destruction_scope": "Mutual destruction scope",
+          "adguard_username_secret": "AdGuard username secret",
+          "adguard_password_secret": "AdGuard password secret",
+          "adguard_rule_prefix": "AdGuard rule prefix",
+          "adguard_clients_yaml": "AdGuard clients YAML"
+        }
+      },
+      "penalties": {
+        "title": "Penalty times",
+        "description": "Enter penalty minutes as YAML mapping.",
+        "data": {
+          "penalties_yaml": "Penalties YAML"
+        }
+      }
+    }
+  }
+}
