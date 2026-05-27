@@ -24,11 +24,42 @@ class Base(SensorEntity):
 
 class DefconLevelSensor(Base):
     _attr_name = "Level"; _attr_unique_id = "family_defcon_level"
+
+    def _is_person_blocked(self, person: str) -> bool:
+        if self.s["mutual_destruction"]:
+            scope = str(self.c.get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+            if scope in ("all", "everyone", "people", "all_people"):
+                return person in self.c["people"]
+            return person in self.c["default_targets"]
+        until = self.s["blocked_until"].get(person)
+        return isinstance(until, datetime) and until > datetime.now()
+
     @property
     def native_value(self):
-        if self.s["mutual_destruction"]: return 1
-        chain = int(self.s["conflict_chain"])
-        return 2 if chain >= 3 else 3 if chain == 2 else 4 if chain == 1 else 5
+        # DEFCON is calculated from the worst active condition, not only the latest launch.
+        # This prevents downgrades such as DEFCON 3 back to DEFCON 4 while multiple people are still blocked.
+        if self.s["mutual_destruction"]:
+            return 1
+
+        daily_launches = int(self.s.get("daily_launches", 0))
+        conflict_chain = int(self.s.get("conflict_chain", 0))
+        launch_limit = int(self.c.get("launches_before_mutual_destruction", 5))
+        chain_limit = int(self.c.get("chain_before_mutual_destruction", 4))
+        active_block_count = sum(1 for person in self.c["people"] if self._is_person_blocked(person))
+
+        # DEFCON 2 is the warning state immediately before Mutual WiFi Destruction.
+        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (chain_limit > 1 and conflict_chain >= chain_limit - 1):
+            return 2
+
+        # DEFCON 3 means active conflict, retaliation, or multiple people currently blocked.
+        if conflict_chain >= 2 or active_block_count >= 2:
+            return 3
+
+        # DEFCON 4 means a single active timeout or first strike condition.
+        if active_block_count >= 1 or conflict_chain >= 1:
+            return 4
+
+        return 5
 
 class PeaceStatusSensor(Base):
     _attr_name = "Peace Status"; _attr_unique_id = "family_defcon_peace_status"
@@ -99,9 +130,17 @@ class PersonWifiStatusSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass); self.person = person
         self._attr_name = f"{person} WiFi Status"; self._attr_unique_id = f"family_defcon_{person.lower()}_wifi_status"
+    def _mutual_blocks_person(self) -> bool:
+        if not self.s["mutual_destruction"]:
+            return False
+        scope = str(self.c.get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+        if scope in ("all", "everyone", "people", "all_people"):
+            return self.person in self.c["people"]
+        return self.person in self.c["default_targets"]
+
     @property
     def native_value(self):
-        if self.s["mutual_destruction"] and self.person in self.c["default_targets"]: return "blocked"
+        if self._mutual_blocks_person(): return "blocked"
         until = self.s["blocked_until"].get(self.person)
         return "blocked" if isinstance(until, datetime) and until > datetime.now() else "allowed"
 
@@ -109,8 +148,16 @@ class PersonMinutesRemainingSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass); self.person = person
         self._attr_name = f"{person} WiFi Minutes Remaining"; self._attr_unique_id = f"family_defcon_{person.lower()}_wifi_minutes_remaining"; self._attr_native_unit_of_measurement = "min"
+    def _mutual_blocks_person(self) -> bool:
+        if not self.s["mutual_destruction"]:
+            return False
+        scope = str(self.c.get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+        if scope in ("all", "everyone", "people", "all_people"):
+            return self.person in self.c["people"]
+        return self.person in self.c["default_targets"]
+
     @property
     def native_value(self):
-        if self.s["mutual_destruction"] and self.person in self.c["default_targets"]: return 999
+        if self._mutual_blocks_person(): return 999
         until = self.s["blocked_until"].get(self.person)
         return max(int((until - datetime.now()).total_seconds() / 60), 0) if isinstance(until, datetime) else 0

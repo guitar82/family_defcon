@@ -266,8 +266,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return conf()["default_targets"]
 
     def is_blocked(person: str) -> bool:
-        if st()["mutual_destruction"] and person in conf()["default_targets"]:
-            return True
+        if st()["mutual_destruction"]:
+            scope = str(conf().get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+            if scope in ("all", "everyone", "people", "all_people"):
+                return person in conf()["people"]
+            return person in conf()["default_targets"]
         until = st()["blocked_until"].get(person)
         return isinstance(until, datetime) and until > datetime.now()
 

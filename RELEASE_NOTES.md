@@ -1,5 +1,13 @@
 # Family DEFCON Release Notes
 
+## v4.8.0
+
+- Fixed DEFCON level severity calculation.
+- DEFCON level is now calculated from the worst active condition instead of the latest event only.
+- Prevents DEFCON 3 from dropping back to DEFCON 4 while multiple people are still blocked.
+- DEFCON 2 now acts as the warning state one step before Mutual WiFi Destruction.
+- Person WiFi status sensors now respect `dns.mutual_destruction_scope: all`.
+
 ## v4.7.0
 
 - Fixed `binary_sensor.dashboard_target_confirmed` not being created.

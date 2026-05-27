@@ -1,9 +1,10 @@
-Family DEFCON v4.7 Confirm Sensor Fix verification
+Family DEFCON v4.8 DEFCON Severity Logic verification
 Python compile: OK
-manifest version 4.7.0: OK
-binary_sensor.py adds MutualDestructionBinarySensor: OK
-binary_sensor.py adds DashboardTargetConfirmedSensor: OK
-dashboard examples reference target_confirmed: OK
-dashboard_select_target still included: OK
+manifest version 4.8.0: OK
+DEFCON level uses worst active condition: OK
+DEFCON 2 warning state added: OK
+Multiple active blocked people keep DEFCON at 3: OK
+Mutual destruction scope all supported by is_blocked: OK
+Person WiFi status sensors respect mutual_destruction_scope: OK
 README updated: OK
 RELEASE_NOTES updated: OK
