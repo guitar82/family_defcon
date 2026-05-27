@@ -1,14 +1,12 @@
-Family DEFCON v5.5 UI PIN Apply + Number Boxes verification
+Family DEFCON v5.6 Advanced YAML Clear Fix verification
 Python compile: OK
-manifest version 5.5.0: OK
-Options update listener now reloads integration: OK
-UI PIN changes apply after save: OK
-PIN fields remain hidden/write-only: OK
-Hashes remain preferred over legacy plain PINs: OK
-Daily launch limit uses number box: OK
-Conflict chain limit uses number box: OK
-Max event log uses number box: OK
-Max bad PIN attempts uses number box: OK
-auth_config_status service added: OK
+manifest version 5.6.0: OK
+Advanced YAML disabled by default: OK
+Advanced YAML ignored unless explicitly enabled: OK
+Clear advanced YAML overrides option added: OK
+Advanced YAML fields no longer repopulate when disabled: OK
+auth_config_status reports advanced override status: OK
+Hidden/write-only hashed PIN behavior preserved: OK
+Number box behavior from v5.5 preserved: OK
 README updated: OK
 RELEASE_NOTES updated: OK

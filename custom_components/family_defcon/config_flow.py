@@ -226,6 +226,12 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "adguard_username_secret": "adguard_username",
                     "adguard_password_secret": "adguard_password",
                     "adguard_rule_prefix": "Family DEFCON Block",
+                    "use_advanced_yaml_overrides": False,
+                    "people_yaml": "",
+                    "auth_users_yaml": "",
+                    "stations_yaml": "",
+                    "adguard_clients_yaml": "",
+                    "penalties_yaml": "",
                     "launches_before_mutual_destruction": 5,
                     "chain_before_mutual_destruction": 4,
                     "daily_reset_time": "05:00:00",
@@ -383,16 +389,42 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="penalties", data_schema=schema)
 
     async def async_step_advanced(self, user_input: dict[str, Any] | None = None):
+        """Advanced raw YAML import.
+
+        This is intentionally opt-in. Empty fields stay empty and are not
+        repopulated from older saved values unless advanced overrides are enabled.
+        """
         opts = self._pending
         if user_input is not None:
-            opts.update(user_input)
+            clear = bool(user_input.get("clear_advanced_yaml_overrides", False))
+            enabled = bool(user_input.get("use_advanced_yaml_overrides", False))
+
+            if clear or not enabled:
+                opts["use_advanced_yaml_overrides"] = False
+                opts["people_yaml"] = ""
+                opts["auth_users_yaml"] = ""
+                opts["stations_yaml"] = ""
+                opts["adguard_clients_yaml"] = ""
+                opts["penalties_yaml"] = ""
+            else:
+                opts["use_advanced_yaml_overrides"] = True
+                opts["people_yaml"] = str(user_input.get("people_yaml", "") or "")
+                opts["auth_users_yaml"] = str(user_input.get("auth_users_yaml", "") or "")
+                opts["stations_yaml"] = str(user_input.get("stations_yaml", "") or "")
+                opts["adguard_clients_yaml"] = str(user_input.get("adguard_clients_yaml", "") or "")
+                opts["penalties_yaml"] = str(user_input.get("penalties_yaml", "") or "")
+
             return self.async_create_entry(title="", data=opts)
 
+        enabled = bool(opts.get("use_advanced_yaml_overrides", False))
+
         schema = vol.Schema({
-            vol.Optional("people_yaml", default=opts.get("people_yaml", "")): str,
-            vol.Optional("auth_users_yaml", default=opts.get("auth_users_yaml", "")): str,
-            vol.Optional("stations_yaml", default=opts.get("stations_yaml", "")): str,
-            vol.Optional("adguard_clients_yaml", default=opts.get("adguard_clients_yaml", "")): str,
-            vol.Optional("penalties_yaml", default=opts.get("penalties_yaml", "")): str,
+            vol.Optional("use_advanced_yaml_overrides", default=enabled): bool,
+            vol.Optional("clear_advanced_yaml_overrides", default=False): bool,
+            vol.Optional("people_yaml", default=opts.get("people_yaml", "") if enabled else ""): str,
+            vol.Optional("auth_users_yaml", default=opts.get("auth_users_yaml", "") if enabled else ""): str,
+            vol.Optional("stations_yaml", default=opts.get("stations_yaml", "") if enabled else ""): str,
+            vol.Optional("adguard_clients_yaml", default=opts.get("adguard_clients_yaml", "") if enabled else ""): str,
+            vol.Optional("penalties_yaml", default=opts.get("penalties_yaml", "") if enabled else ""): str,
         })
         return self.async_show_form(step_id="advanced", data_schema=schema)

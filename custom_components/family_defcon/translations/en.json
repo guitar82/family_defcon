@@ -184,13 +184,15 @@
       },
       "advanced": {
         "title": "Advanced raw YAML import",
-        "description": "Optional fallback for power users. Leave blank unless needed.",
+        "description": "Optional power-user overrides. Leave disabled unless you intentionally want raw YAML to override the guided UI pages.",
         "data": {
           "people_yaml": "People YAML",
           "auth_users_yaml": "Auth users YAML",
           "stations_yaml": "Stations YAML",
           "adguard_clients_yaml": "AdGuard clients YAML",
-          "penalties_yaml": "Penalties YAML"
+          "penalties_yaml": "Penalties YAML",
+          "use_advanced_yaml_overrides": "Use advanced raw YAML overrides",
+          "clear_advanced_yaml_overrides": "Clear advanced raw YAML overrides"
         }
       }
     }

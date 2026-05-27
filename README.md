@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.5.0**
+**Current release: v5.6.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -879,3 +879,28 @@ action: family_defcon.auth_config_status
 ```
 
 This logs whether the active auth source is UI options or YAML and lists which users have hashed PINs, without showing the PINs.
+
+
+## v5.6.0 Advanced YAML clear fix
+
+v5.6 fixes old Advanced raw YAML fields silently repopulating and overriding guided UI PIN settings.
+
+Changes:
+
+```text
+Advanced raw YAML is now disabled by default.
+Advanced raw YAML is ignored unless Use advanced raw YAML overrides is enabled.
+Added Clear advanced raw YAML overrides switch.
+Advanced raw YAML fields stay blank unless advanced overrides are enabled.
+auth_config_status now reports whether advanced YAML overrides are on or off.
+```
+
+Recommended fix if an old PIN keeps working:
+
+```text
+Configure → Advanced raw YAML import
+Turn OFF Use advanced raw YAML overrides
+Turn ON Clear advanced raw YAML overrides
+Save
+Then update the PIN in People, PINs, and AdGuard clients
+```

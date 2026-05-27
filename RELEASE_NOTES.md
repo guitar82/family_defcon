@@ -1,5 +1,13 @@
 # Family DEFCON Release Notes
 
+## v5.6.0
+
+- Fixed Advanced raw YAML fields repopulating and overriding guided UI settings.
+- Added `use_advanced_yaml_overrides` option.
+- Added `clear_advanced_yaml_overrides` option.
+- Advanced YAML is ignored unless explicitly enabled.
+- `auth_config_status` now reports advanced override status.
+
 ## v5.5.0
 
 - Fixed UI PIN changes not applying until manual reload/restart.
