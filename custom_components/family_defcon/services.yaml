@@ -139,3 +139,7 @@ hash_pin:
 migrate_entity_ids:
   name: Migrate Entity IDs
   description: Rename old dashboard entity IDs to the newer family_defcon_* entity IDs when possible.
+
+auth_config_status:
+  name: Auth Config Status
+  description: Log whether the active PIN/auth configuration came from UI options or YAML without exposing PINs.

@@ -62,6 +62,7 @@ DASHBOARD_KEYPRESS_SCHEMA = vol.Schema({vol.Required("digit"): cv.string})
 DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
 HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
+AUTH_SOURCE_SCHEMA = vol.Schema({})
 
 
 
@@ -147,10 +148,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["config_path"] = config_file
 
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
-        """Apply changed options on next reload and prompt user to reload if already running."""
+        """Reload Family DEFCON when options change so UI PIN changes apply immediately."""
         hass.data.setdefault(DOMAIN, {})["config_entry"] = updated_entry
         if hass.data[DOMAIN].get("setup_complete"):
-            _LOGGER.info("Family DEFCON options updated. Use family_defcon.reload_config or restart Home Assistant to apply immediately.")
+            _LOGGER.info("Family DEFCON options updated. Reloading integration so UI settings take effect.")
+            await hass.config_entries.async_reload(updated_entry.entry_id)
 
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
@@ -989,7 +991,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             dash = dashboard_config()
             default_target = str(dash.get("default_target", "")) if isinstance(dash, dict) else ""
             st()["dashboard_target"] = default_target if default_target in targets else (targets[0] if targets else "")
-        await log_event("Config reloaded.")
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ".")
 
     async def handle_block_person(call: ServiceCall) -> None:
         person = call.data["person"]
@@ -1014,6 +1018,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             notification_id="family_defcon_pin_hash",
         )
         await log_event("PIN hash generated in Home Assistant notifications.")
+
+    async def handle_auth_config_status(call: ServiceCall) -> None:
+        """Report whether active auth came from UI options or YAML without revealing PINs."""
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+        use_ui = bool(opts.get("use_ui_config", False))
+        users = conf().get("auth", {}).get("users", {})
+        hash_users = [person for person, data in users.items() if isinstance(data, dict) and data.get("pin_hash")]
+        legacy_pin_users = [person for person, data in users.items() if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")]
+        await log_event(
+            "Auth config source: "
+            + ("UI options" if use_ui else "YAML")
+            + f". Hashed PIN users: {', '.join(hash_users) if hash_users else 'none'}."
+            + f" Legacy plain PIN users: {', '.join(legacy_pin_users) if legacy_pin_users else 'none'}."
+        )
 
     async def handle_migrate_entity_ids(call: ServiceCall) -> None:
         registry = er.async_get(hass)
@@ -1166,6 +1185,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
     hass.services.async_register(DOMAIN, "hash_pin", handle_hash_pin, schema=HASH_PIN_SCHEMA)
+    hass.services.async_register(DOMAIN, "auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA)
     hass.services.async_register(DOMAIN, "migrate_entity_ids", handle_migrate_entity_ids)
 
     async def periodic(now: datetime) -> None:

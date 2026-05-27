@@ -35,6 +35,18 @@ def _int_range(default: int, minimum: int = 0, maximum: int = 9999):
     return vol.All(vol.Coerce(int), vol.Range(min=minimum, max=maximum))
 
 
+
+def _number_box(default: int, minimum: int = 0, maximum: int = 9999):
+    """Return a number input box selector instead of a slider."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=minimum,
+            max=maximum,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
 def _person_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
     people = options.get("people_list")
     roles = options.get("people_roles", {})
@@ -287,20 +299,31 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
         opts = self._pending
         if user_input is not None:
             opts.update(user_input)
+            for key in (
+                "cooldown_seconds",
+                "launches_before_mutual_destruction",
+                "chain_before_mutual_destruction",
+                "max_event_log",
+                "pin_timeout_seconds",
+                "max_bad_pin_attempts",
+                "lockout_seconds_after_bad_pins",
+            ):
+                if key in opts and opts[key] not in (None, ""):
+                    opts[key] = int(float(opts[key]))
             return self.async_create_entry(title="", data=opts)
 
         schema = vol.Schema({
             vol.Optional("use_ui_config", default=opts.get("use_ui_config", True)): bool,
             vol.Optional("cooldown_seconds", default=opts.get("cooldown_seconds", 30)): _int_range(30, 0, 3600),
-            vol.Optional("launches_before_mutual_destruction", default=opts.get("launches_before_mutual_destruction", 5)): _int_range(5, 2, 99),
-            vol.Optional("chain_before_mutual_destruction", default=opts.get("chain_before_mutual_destruction", 4)): _int_range(4, 2, 99),
+            vol.Optional("launches_before_mutual_destruction", default=opts.get("launches_before_mutual_destruction", 5)): _number_box(5, 2, 99),
+            vol.Optional("chain_before_mutual_destruction", default=opts.get("chain_before_mutual_destruction", 4)): _number_box(4, 2, 99),
             vol.Optional("daily_reset_time", default=opts.get("daily_reset_time", "05:00:00")): str,
-            vol.Optional("max_event_log", default=opts.get("max_event_log", 25)): _int_range(25, 5, 200),
+            vol.Optional("max_event_log", default=opts.get("max_event_log", 25)): _number_box(25, 5, 200),
             vol.Optional("allow_parent_targets_default", default=opts.get("allow_parent_targets_default", False)): bool,
             vol.Optional("require_station_match", default=opts.get("require_station_match", False)): bool,
             vol.Optional("require_key_for_launch", default=opts.get("require_key_for_launch", False)): bool,
             vol.Optional("pin_timeout_seconds", default=opts.get("pin_timeout_seconds", 60)): _int_range(60, 1, 3600),
-            vol.Optional("max_bad_pin_attempts", default=opts.get("max_bad_pin_attempts", 3)): _int_range(3, 1, 20),
+            vol.Optional("max_bad_pin_attempts", default=opts.get("max_bad_pin_attempts", 3)): _number_box(3, 1, 20),
             vol.Optional("lockout_seconds_after_bad_pins", default=opts.get("lockout_seconds_after_bad_pins", 120)): _int_range(120, 1, 3600),
         })
         return self.async_show_form(step_id="system", data_schema=schema)

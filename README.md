@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.4.0**
+**Current release: v5.5.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -856,3 +856,26 @@ To change a PIN, enter a new PIN in the hidden field and save.
 v5.4 adds a safe `async_migrate_entry` handler for Home Assistant config entry migrations.
 
 This fixes migration errors from earlier test builds where the config flow version changed before a migration handler existed. The migration preserves existing data/options and adds missing defaults for the guided UI config.
+
+
+## v5.5.0 UI PIN apply fix and number boxes
+
+v5.5 fixes UI PIN changes not taking effect immediately.
+
+Changes:
+
+```text
+Options updates now reload the integration automatically.
+Changing a person PIN in the UI hashes the new PIN and applies it after save.
+The reload event now says whether the active source is UI options or YAML.
+Added family_defcon.auth_config_status for debugging active auth source without exposing PINs.
+Daily launches, conflict chain, max event log, and max bad PIN attempts now use number boxes instead of sliders.
+```
+
+Diagnostic action:
+
+```yaml
+action: family_defcon.auth_config_status
+```
+
+This logs whether the active auth source is UI options or YAML and lists which users have hashed PINs, without showing the PINs.

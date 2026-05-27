@@ -1,5 +1,13 @@
 # Family DEFCON Release Notes
 
+## v5.5.0
+
+- Fixed UI PIN changes not applying until manual reload/restart.
+- Options updates now reload the integration automatically.
+- Added `family_defcon.auth_config_status` diagnostic service.
+- Reload config event now reports whether source is UI options or YAML.
+- Changed daily launch limit, conflict chain limit, max event log, and max bad PIN attempts to number box selectors.
+
 ## v5.4.0
 
 - Added `async_migrate_entry` to fix Home Assistant config entry migration errors.

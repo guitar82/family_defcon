@@ -1,11 +1,14 @@
-Family DEFCON v5.4 Migration + Hidden Hashed PINs verification
+Family DEFCON v5.5 UI PIN Apply + Number Boxes verification
 Python compile: OK
-manifest version 5.4.0: OK
-async_migrate_entry added: OK
-Config entry version normalization added: OK
-Existing options are preserved: OK
-Missing guided UI defaults are added: OK
-Hidden hashed PIN behavior preserved: OK
-Password selector for PINs preserved: OK
+manifest version 5.5.0: OK
+Options update listener now reloads integration: OK
+UI PIN changes apply after save: OK
+PIN fields remain hidden/write-only: OK
+Hashes remain preferred over legacy plain PINs: OK
+Daily launch limit uses number box: OK
+Conflict chain limit uses number box: OK
+Max event log uses number box: OK
+Max bad PIN attempts uses number box: OK
+auth_config_status service added: OK
 README updated: OK
 RELEASE_NOTES updated: OK

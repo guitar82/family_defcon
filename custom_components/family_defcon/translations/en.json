@@ -106,15 +106,15 @@
         "data": {
           "use_ui_config": "Use UI configuration instead of YAML",
           "cooldown_seconds": "Launch cooldown seconds",
-          "launches_before_mutual_destruction": "Daily launches before Mutual WiFi Destruction",
-          "chain_before_mutual_destruction": "Conflict chain before Mutual WiFi Destruction",
+          "launches_before_mutual_destruction": "Daily launches before Mutual WiFi Destruction, number",
+          "chain_before_mutual_destruction": "Conflict chain before Mutual WiFi Destruction, number",
           "daily_reset_time": "Daily reset time",
-          "max_event_log": "Maximum event log entries",
+          "max_event_log": "Maximum event log entries, number",
           "allow_parent_targets_default": "Allow parent targets by default",
           "require_station_match": "Require station match",
           "require_key_for_launch": "Require key for launch",
           "pin_timeout_seconds": "PIN timeout seconds",
-          "max_bad_pin_attempts": "Maximum bad PIN attempts",
+          "max_bad_pin_attempts": "Maximum bad PIN attempts, number",
           "lockout_seconds_after_bad_pins": "Lockout seconds after bad PIN attempts"
         }
       },
