@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.1.0**
+**Current release: v5.2.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -790,4 +790,38 @@ Generate a PIN hash with:
 action: family_defcon.hash_pin
 data:
   pin: "2222"
+```
+
+## v5.2.0 Guided UI configuration
+
+v5.2 replaces the messy YAML-only options pages with guided setup pages.
+
+Open:
+
+```text
+Settings → Devices & services → Family DEFCON → Configure
+```
+
+The Configure menu now shows named sections:
+
+```text
+People, PINs, and AdGuard clients
+System and escalation settings
+Stations and dashboard
+AdGuard enforcement settings
+Penalty time settings
+Advanced raw YAML import
+```
+
+The People page has separate fields for each person:
+
+```text
+Person name
+Role
+Plain PIN
+PIN hash
+AdGuard client name
+Child/default target checkbox
+Parent target checkbox
+Dashboard target checkbox
 ```

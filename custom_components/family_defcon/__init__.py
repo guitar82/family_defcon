@@ -233,87 +233,133 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     def apply_options_overrides(normalized: dict) -> dict:
         """Apply UI options over YAML values.
 
-        v5.1 can move almost all variable settings into the UI options flow.
-        family_defcon.yaml remains a fallback and still works for backup/portable config.
+        v5.2 uses guided per-person setup fields instead of forcing YAML snippets.
+        family_defcon.yaml remains a fallback and portable backup.
         """
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
         opts = dict(getattr(entry, "options", {}) or {})
 
         use_ui_config = bool(opts.get("use_ui_config", False))
         if use_ui_config:
-            normalized["people"] = _string_list(
-                _parse_ui_yaml(opts.get("people_yaml", ""), normalized.get("people", [])),
-                normalized.get("people", []),
-            )
-            normalized["default_targets"] = _string_list(
-                _parse_ui_yaml(opts.get("default_targets_yaml", ""), normalized.get("default_targets", [])),
-                normalized.get("default_targets", []),
-            )
-            normalized["parent_targets"] = _string_list(
-                _parse_ui_yaml(opts.get("parent_targets_yaml", ""), normalized.get("parent_targets", [])),
-                normalized.get("parent_targets", []),
-            )
+            people_list = opts.get("people_list")
+            if isinstance(people_list, list) and people_list:
+                normalized["people"] = [str(person) for person in people_list if str(person).strip()]
 
-            users = _dict_value(
-                _parse_ui_yaml(opts.get("auth_users_yaml", ""), normalized.get("auth", {}).get("users", {})),
-                normalized.get("auth", {}).get("users", {}),
-            )
-            normalized["auth"]["users"] = users
+                roles = opts.get("people_roles", {}) if isinstance(opts.get("people_roles", {}), dict) else {}
+                pins = opts.get("people_pins", {}) if isinstance(opts.get("people_pins", {}), dict) else {}
+                pin_hashes = opts.get("people_pin_hashes", {}) if isinstance(opts.get("people_pin_hashes", {}), dict) else {}
 
-            stations = _dict_value(
-                _parse_ui_yaml(opts.get("stations_yaml", ""), normalized.get("stations", {})),
-                normalized.get("stations", {}),
-            )
-            normalized["stations"] = {}
-            for station_id, station_data in stations.items():
-                if isinstance(station_data, dict):
-                    normalized["stations"][str(station_id)] = {
-                        "name": str(station_data.get("name", station_id)),
-                        "enabled": bool(station_data.get("enabled", True)),
-                        "key_entity": str(station_data.get("key_entity", "")),
-                    }
+                normalized["auth"]["users"] = {}
+                for person in normalized["people"]:
+                    user_data = {"role": str(roles.get(person, "child"))}
+                    if str(pin_hashes.get(person, "")).strip():
+                        user_data["pin_hash"] = str(pin_hashes.get(person, "")).strip()
+                    if str(pins.get(person, "")).strip():
+                        user_data["pin"] = str(pins.get(person, "")).strip()
+                    normalized["auth"]["users"][person] = user_data
 
-            clients = _dict_value(
-                _parse_ui_yaml(opts.get("adguard_clients_yaml", ""), normalized.get("dns", {}).get("adguard_home", {}).get("clients", {})),
-                normalized.get("dns", {}).get("adguard_home", {}).get("clients", {}),
-            )
-            normalized["dns"]["adguard_home"]["clients"] = {}
-            for person in normalized["people"]:
-                entry_data = clients.get(person, person) if isinstance(clients, dict) else person
-                if isinstance(entry_data, dict):
+                normalized["default_targets"] = [
+                    str(p) for p in opts.get("default_targets_list", [])
+                    if str(p) in normalized["people"]
+                ] if isinstance(opts.get("default_targets_list"), list) else normalized["default_targets"]
+
+                normalized["parent_targets"] = [
+                    str(p) for p in opts.get("parent_targets_list", [])
+                    if str(p) in normalized["people"]
+                ] if isinstance(opts.get("parent_targets_list"), list) else normalized["parent_targets"]
+
+                clients = opts.get("people_adguard_clients", {}) if isinstance(opts.get("people_adguard_clients", {}), dict) else {}
+                normalized["dns"]["adguard_home"]["clients"] = {}
+                for person in normalized["people"]:
                     normalized["dns"]["adguard_home"]["clients"][person] = {
-                        "client_name": str(entry_data.get("client_name", person)),
-                        "enabled": bool(entry_data.get("enabled", True)),
-                    }
-                else:
-                    normalized["dns"]["adguard_home"]["clients"][person] = {
-                        "client_name": str(entry_data),
+                        "client_name": str(clients.get(person, person)),
                         "enabled": True,
                     }
 
-            penalties = _dict_value(
-                _parse_ui_yaml(opts.get("penalties_yaml", ""), normalized.get("penalties", {})),
-                normalized.get("penalties", {}),
-            )
-            for key in [
-                "first_strike_target_minutes",
-                "retaliator_extra_minutes",
-                "retaliation_target_minutes",
-                "reattacker_extra_minutes",
-                "reattack_target_minutes",
-            ]:
-                if key in penalties:
-                    normalized["penalties"][key] = int(penalties[key])
+                dashboard_targets = opts.get("dashboard_targets_list", [])
+                if isinstance(dashboard_targets, list):
+                    dashboard_targets = [str(p) for p in dashboard_targets if str(p) in normalized["people"]]
+                else:
+                    dashboard_targets = normalized.get("dashboard", {}).get("targets", normalized["people"])
 
-            dash_targets = _string_list(
-                _parse_ui_yaml(opts.get("dashboard_targets_yaml", ""), normalized.get("dashboard", {}).get("targets", [])),
-                normalized.get("dashboard", {}).get("targets", []),
-            )
-            normalized["dashboard"] = {
-                "station_id": str(opts.get("dashboard_station_id", normalized.get("dashboard", {}).get("station_id", "dashboard"))),
-                "default_target": str(opts.get("dashboard_default_target", normalized.get("dashboard", {}).get("default_target", ""))),
-                "targets": dash_targets,
-            }
+                normalized["dashboard"] = {
+                    "station_id": str(opts.get("dashboard_station_id", "dashboard")),
+                    "default_target": str(opts.get("dashboard_default_target", dashboard_targets[0] if dashboard_targets else "")),
+                    "targets": dashboard_targets,
+                }
+
+            stations_list = opts.get("stations_list")
+            if isinstance(stations_list, list) and stations_list:
+                normalized["stations"] = {}
+                for station in stations_list:
+                    if not isinstance(station, dict):
+                        continue
+                    station_id = str(station.get("id", "")).strip()
+                    if not station_id:
+                        continue
+                    normalized["stations"][station_id] = {
+                        "name": str(station.get("name", station_id)),
+                        "enabled": bool(station.get("enabled", True)),
+                        "key_entity": str(station.get("key_entity", "")),
+                    }
+
+            # Advanced YAML import still works when populated.
+            people_yaml = opts.get("people_yaml", "")
+            if people_yaml:
+                parsed_people = _parse_ui_yaml(people_yaml, normalized.get("people", []))
+                normalized["people"] = _string_list(parsed_people, normalized.get("people", []))
+
+            auth_users_yaml = opts.get("auth_users_yaml", "")
+            if auth_users_yaml:
+                normalized["auth"]["users"] = _dict_value(
+                    _parse_ui_yaml(auth_users_yaml, normalized.get("auth", {}).get("users", {})),
+                    normalized.get("auth", {}).get("users", {}),
+                )
+
+            stations_yaml = opts.get("stations_yaml", "")
+            if stations_yaml:
+                stations = _dict_value(
+                    _parse_ui_yaml(stations_yaml, normalized.get("stations", {})),
+                    normalized.get("stations", {}),
+                )
+                normalized["stations"] = {}
+                for station_id, station_data in stations.items():
+                    if isinstance(station_data, dict):
+                        normalized["stations"][str(station_id)] = {
+                            "name": str(station_data.get("name", station_id)),
+                            "enabled": bool(station_data.get("enabled", True)),
+                            "key_entity": str(station_data.get("key_entity", "")),
+                        }
+
+            adguard_clients_yaml = opts.get("adguard_clients_yaml", "")
+            if adguard_clients_yaml:
+                clients = _dict_value(
+                    _parse_ui_yaml(adguard_clients_yaml, normalized.get("dns", {}).get("adguard_home", {}).get("clients", {})),
+                    normalized.get("dns", {}).get("adguard_home", {}).get("clients", {}),
+                )
+                normalized["dns"]["adguard_home"]["clients"] = {}
+                for person in normalized["people"]:
+                    entry_data = clients.get(person, person) if isinstance(clients, dict) else person
+                    if isinstance(entry_data, dict):
+                        normalized["dns"]["adguard_home"]["clients"][person] = {
+                            "client_name": str(entry_data.get("client_name", person)),
+                            "enabled": bool(entry_data.get("enabled", True)),
+                        }
+                    else:
+                        normalized["dns"]["adguard_home"]["clients"][person] = {
+                            "client_name": str(entry_data),
+                            "enabled": True,
+                        }
+
+            penalties_yaml = opts.get("penalties_yaml", "")
+            if penalties_yaml:
+                penalties = _dict_value(
+                    _parse_ui_yaml(penalties_yaml, normalized.get("penalties", {})),
+                    normalized.get("penalties", {}),
+                )
+                for key, value in penalties.items():
+                    if key in normalized["penalties"]:
+                        normalized["penalties"][key] = int(value)
 
         int_keys = [
             "cooldown_seconds",
@@ -333,6 +379,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         for key in auth_int_keys:
             if key in opts and opts[key] not in (None, ""):
                 normalized["auth"][key] = int(opts[key])
+
+        penalty_keys = [
+            "first_strike_target_minutes",
+            "retaliator_extra_minutes",
+            "retaliation_target_minutes",
+            "reattacker_extra_minutes",
+            "reattack_target_minutes",
+        ]
+        for key in penalty_keys:
+            if key in opts and opts[key] not in (None, ""):
+                normalized["penalties"][key] = int(opts[key])
 
         bool_keys = [
             "allow_parent_targets_default",

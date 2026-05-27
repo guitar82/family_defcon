@@ -1,5 +1,14 @@
 # Family DEFCON Release Notes
 
+## v5.2.0
+
+- Replaced confusing YAML-only config pages with guided fields.
+- Added separate fields for each person, role, PIN, PIN hash, and AdGuard client name.
+- Added per-person checkboxes for default target, parent target, and dashboard visibility.
+- Added guided station fields.
+- Fixed options menu labels so section names show properly.
+- Kept Advanced raw YAML import as a power-user fallback.
+
 ## v5.1.0
 
 - Moved almost all remaining variable settings into the UI Options flow.
