@@ -147,24 +147,3 @@ auth_config_status:
 config_audit_status:
   name: Config Audit Status
   description: Log a safe audit of active Family DEFCON config variables without exposing PIN values.
-
-dashboard_confirm_pin:
-  name: Dashboard Confirm PIN
-  description: Validate a dashboard PIN and target without launching. Sets dashboard confirmation state only when PIN is valid.
-  fields:
-    pin:
-      name: PIN
-      required: true
-      selector:
-        text:
-          type: password
-    target:
-      name: Target
-      required: true
-      selector:
-        text:
-    station:
-      name: Station
-      required: false
-      selector:
-        text:

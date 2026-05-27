@@ -7,6 +7,11 @@ cards:
     show_name: true
     tap_action:
       action: none
+    triggers_update:
+      - sensor.family_defcon_last_event
+      - binary_sensor.family_defcon_dashboard_target_confirmed
+      - select.family_defcon_dashboard_target
+      - text.family_defcon_dashboard_pin
     styles:
       grid:
         - grid-template-areas: '"i n" "i sub"'
@@ -36,11 +41,14 @@ cards:
     custom_fields:
       sub: |
         [[[
-          const status = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
-          const msg = states['sensor.family_defcon_dashboard_auth_message']?.state || 'Enter PIN and confirm target.';
-          const by = states['sensor.family_defcon_dashboard_confirmed_by']?.state || '';
-          const color = status === 'confirmed' ? '#69f0ae' : status === 'invalid' || status === 'locked' ? '#ff8a80' : status === 'launching' ? '#fff176' : '#b0bec5';
-          return `<span style="color:${color};">${by && status === 'confirmed' ? 'Confirmed by ' + by + '. ' : ''}${msg}</span>`;
+          const event = states['sensor.family_defcon_last_event']?.state || 'Enter PIN, confirm target, then launch.';
+          const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
+          const lower = event.toLowerCase();
+
+          if (confirmed) return `<span style="color:#69f0ae;">${event}</span>`;
+          if (lower.includes('invalid pin') || lower.includes('bad pin') || lower.includes('locked') || lower.includes('rejected')) return `<span style="color:#ff8a80;">${event}</span>`;
+          if (lower.includes('launch sent')) return `<span style="color:#fff176;">${event}</span>`;
+          return `<span>${event}</span>`;
         ]]]
 
   - type: grid
@@ -121,7 +129,11 @@ cards:
     name: ""
     show_icon: false
     show_state: false
-    triggers_update: all
+    triggers_update:
+      - sensor.family_defcon_last_event
+      - binary_sensor.family_defcon_dashboard_target_confirmed
+      - text.family_defcon_dashboard_pin
+      - select.family_defcon_dashboard_target
     tap_action:
       action: none
     styles:
@@ -134,19 +146,23 @@ cards:
         - background: |
             [[[
               const pin = states['text.family_defcon_dashboard_pin']?.state || '';
-              const status = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
               const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
-              if (confirmed && status === 'confirmed') return 'linear-gradient(135deg, #003b12, #69f0ae)';
-              if (status === 'invalid' || status === 'locked') return 'linear-gradient(135deg, #4a0000, #ff8a80)';
-              if (status === 'launching') return 'linear-gradient(135deg, #0b365c, #29b6f6)';
+              const event = states['sensor.family_defcon_last_event']?.state || '';
+              const lower = event.toLowerCase();
+
+              if (confirmed) return 'linear-gradient(135deg, #003b12, #69f0ae)';
+              if (lower.includes('invalid pin') || lower.includes('bad pin') || lower.includes('locked') || lower.includes('rejected')) return 'linear-gradient(135deg, #4a0000, #ff8a80)';
+              if (lower.includes('launch sent')) return 'linear-gradient(135deg, #0b365c, #29b6f6)';
               if (pin.length > 0) return 'linear-gradient(135deg, #4a3b00, #fdd835)';
               return '#101820';
             ]]]
         - color: |
             [[[
-              const status = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
               const pin = states['text.family_defcon_dashboard_pin']?.state || '';
-              return status !== 'idle' || pin.length > 0 ? '#111111' : '#ffffff';
+              const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
+              const event = states['sensor.family_defcon_last_event']?.state || '';
+              const lower = event.toLowerCase();
+              return confirmed || pin.length > 0 || lower.includes('invalid pin') || lower.includes('bad pin') || lower.includes('locked') || lower.includes('rejected') || lower.includes('launch sent') ? '#111111' : '#ffffff';
             ]]]
         - border: 1px solid rgba(255,255,255,.12)
     custom_fields:
@@ -155,25 +171,16 @@ cards:
           const pin = states['text.family_defcon_dashboard_pin']?.state || '';
           const target = states['select.family_defcon_dashboard_target']?.state || 'No target';
           const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
-          const authStatus = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
-          const msg = states['sensor.family_defcon_dashboard_auth_message']?.state || '';
-          const by = states['sensor.family_defcon_dashboard_confirmed_by']?.state || '';
+          const event = states['sensor.family_defcon_last_event']?.state || '';
+          const lower = event.toLowerCase();
 
-          if (confirmed && authStatus === 'confirmed') {
-            return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">✅ TARGET LOCKED</div><div style="font-size:24px;font-weight:950;margin-top:2px;">${target}</div><div style="font-size:11px;margin-top:2px;">Confirmed by ${by}. Press LAUNCH or CANCEL.</div></div>`;
-          }
+          if (confirmed) return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">✅ TARGET LOCKED</div><div style="font-size:24px;font-weight:950;margin-top:2px;">${target}</div><div style="font-size:11px;margin-top:2px;">${event}</div></div>`;
 
-          if (authStatus === 'invalid' || authStatus === 'locked') {
-            return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">❌ PIN NOT VALID</div><div style="font-size:17px;font-weight:950;margin-top:2px;">${msg}</div><div style="font-size:11px;margin-top:2px;">Clear or re-enter PIN.</div></div>`;
-          }
+          if (lower.includes('invalid pin') || lower.includes('bad pin') || lower.includes('locked') || lower.includes('rejected')) return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">❌ PIN NOT VALID</div><div style="font-size:17px;font-weight:950;margin-top:2px;">${event}</div><div style="font-size:11px;margin-top:2px;">Clear or re-enter PIN.</div></div>`;
 
-          if (authStatus === 'launching') {
-            return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">🚀 LAUNCHING</div><div style="font-size:17px;font-weight:950;margin-top:2px;">${msg}</div></div>`;
-          }
+          if (lower.includes('launch sent')) return `<div style="text-align:center;"><div style="font-size:12px;font-weight:950;letter-spacing:1px;">🚀 LAUNCHING</div><div style="font-size:17px;font-weight:950;margin-top:2px;">${event}</div></div>`;
 
-          if (pin.length > 0) {
-            return `<div style="text-align:center;"><div style="font-size:12px;font-weight:900;letter-spacing:1px;">TARGET READY</div><div style="font-size:24px;font-weight:950;margin-top:2px;">${target}</div><div style="font-size:11px;margin-top:2px;">Press CONFIRM to validate PIN and lock target.</div></div>`;
-          }
+          if (pin.length > 0) return `<div style="text-align:center;"><div style="font-size:12px;font-weight:900;letter-spacing:1px;">TARGET READY</div><div style="font-size:24px;font-weight:950;margin-top:2px;">${target}</div><div style="font-size:11px;margin-top:2px;">Press CONFIRM to validate PIN and lock target.</div></div>`;
 
           return `<div style="text-align:center;"><div style="font-size:12px;font-weight:900;letter-spacing:1px;color:#b0bec5;">AWAITING PIN</div><div style="font-size:20px;font-weight:950;margin-top:2px;">Select target and enter PIN</div></div>`;
         ]]]
@@ -197,10 +204,13 @@ cards:
             - border-radius: 18px
             - background: |
                 [[[
-                  const status = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
+                  const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
                   const pin = states['text.family_defcon_dashboard_pin']?.state || '';
-                  if (status === 'confirmed') return 'linear-gradient(135deg, #003b12, #69f0ae)';
-                  if (status === 'invalid' || status === 'locked') return 'linear-gradient(135deg, #7f0000, #ff8a80)';
+                  const event = states['sensor.family_defcon_last_event']?.state || '';
+                  const lower = event.toLowerCase();
+
+                  if (confirmed) return 'linear-gradient(135deg, #003b12, #69f0ae)';
+                  if (lower.includes('invalid pin') || lower.includes('bad pin') || lower.includes('locked') || lower.includes('rejected')) return 'linear-gradient(135deg, #7f0000, #ff8a80)';
                   if (pin.length > 0) return 'linear-gradient(135deg, #fdd835, #fff176)';
                   return '#5f5100';
                 ]]]
@@ -228,9 +238,9 @@ cards:
             - background: |
                 [[[
                   const confirmed = states['binary_sensor.family_defcon_dashboard_target_confirmed']?.state === 'on';
-                  const status = states['sensor.family_defcon_dashboard_auth_status']?.state || 'idle';
-                  if (confirmed && status === 'confirmed') return 'linear-gradient(135deg, #b71c1c, #f44336)';
-                  if (status === 'launching') return 'linear-gradient(135deg, #0b365c, #29b6f6)';
+                  const event = states['sensor.family_defcon_last_event']?.state || '';
+                  if (event.toLowerCase().includes('launch sent')) return 'linear-gradient(135deg, #0b365c, #29b6f6)';
+                  if (confirmed) return 'linear-gradient(135deg, #b71c1c, #f44336)';
                   return '#4b1b1b';
                 ]]]
             - color: white
@@ -285,91 +295,6 @@ cards:
       icon:
         - color: "#29b6f6"
         - width: 22px
-
-  - type: grid
-    columns: 3
-    square: false
-    cards:
-      - type: custom:button-card
-        name: Henry
-        icon: mdi:account
-        tap_action:
-          action: call-service
-          service: family_defcon.dashboard_select_target
-          data:
-            target: Henry
-        styles: &target_kid_style
-          card:
-            - height: 48px
-            - border-radius: 14px
-            - background: |
-                [[[
-                  const current = states['select.family_defcon_dashboard_target']?.state || '';
-                  return current === this._config.name ? 'linear-gradient(135deg, #29b6f6, #1565c0)' : '#101820';
-                ]]]
-            - color: white
-            - border: 1px solid rgba(255,255,255,.12)
-          icon:
-            - width: 20px
-            - color: white
-          name:
-            - font-size: 13px
-            - font-weight: 950
-      - type: custom:button-card
-        name: Marc
-        icon: mdi:account
-        tap_action:
-          action: call-service
-          service: family_defcon.dashboard_select_target
-          data:
-            target: Marc
-        styles: *target_kid_style
-      - type: custom:button-card
-        name: Maggie
-        icon: mdi:account
-        tap_action:
-          action: call-service
-          service: family_defcon.dashboard_select_target
-          data:
-            target: Maggie
-        styles: *target_kid_style
-      - type: custom:button-card
-        name: Mom
-        icon: mdi:account-supervisor
-        tap_action:
-          action: call-service
-          service: family_defcon.dashboard_select_target
-          data:
-            target: Mom
-        styles: &target_parent_style
-          card:
-            - height: 48px
-            - border-radius: 14px
-            - background: |
-                [[[
-                  const current = states['select.family_defcon_dashboard_target']?.state || '';
-                  return current === this._config.name ? 'linear-gradient(135deg, #fdd835, #f9a825)' : '#101820';
-                ]]]
-            - color: |
-                [[[
-                  const current = states['select.family_defcon_dashboard_target']?.state || '';
-                  return current === this._config.name ? '#111111' : '#ffffff';
-                ]]]
-            - border: 1px solid rgba(255,255,255,.12)
-          icon:
-            - width: 20px
-          name:
-            - font-size: 13px
-            - font-weight: 950
-      - type: custom:button-card
-        name: Dad
-        icon: mdi:account-supervisor
-        tap_action:
-          action: call-service
-          service: family_defcon.dashboard_select_target
-          data:
-            target: Dad
-        styles: *target_parent_style
 
   - type: grid
     columns: 3

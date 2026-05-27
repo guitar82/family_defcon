@@ -1,11 +1,12 @@
-Family DEFCON v5.9 Dashboard Examples + Confirm Validation verification
+Family DEFCON v5.8.2 Stable Plus verification
+Base package: v5.8 only
 Python compile: OK
-manifest version 5.9.0: OK
-Example launch console dashboard added: OK
-Example status overview dashboard added: OK
-Confirm button validates PIN before turning green: OK
+manifest version 5.8.2: OK
+Example launch console added: OK
+Example status overview added: OK
+Confirm validates PIN before green state: OK
 Wrong PIN keeps dashboard_confirm false: OK
-Lockout/bad PIN warnings are shown through dashboard auth sensors: OK
-Confirmed by sensor added: OK
-Launch button shows immediate launching status: OK
-Existing v5.8 config audit and 4 digit PIN behavior preserved: OK
+Launch button uses non-blocking launch_with_pin: OK
+No v5.9 dashboard auth sensor code carried over: OK
+No v5.9 dashboard_confirm_pin service carried over: OK
+No v5.10 startup fallback code carried over: OK

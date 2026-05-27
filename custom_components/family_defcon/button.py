@@ -1,5 +1,16 @@
-"""Button entities for Family DEFCON dashboard launch interface."""
+"""Button entities for Family DEFCON dashboard launch interface.
+
+Stable v5.8.2 note:
+This file is based on the working v5.8 backend. It only improves dashboard button behavior:
+- Confirm validates the PIN before turning target confirmation on.
+- Wrong PIN keeps dashboard_confirm false.
+- Launch button sends launch_with_pin non-blocking so the dashboard responds quickly.
+"""
 from __future__ import annotations
+
+from datetime import datetime, timedelta
+import hashlib
+import hmac
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
@@ -14,6 +25,27 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         DashboardLaunchButton(hass),
         DashboardCancelButton(hass),
     ], True)
+
+
+def _verify_pin_value(pin: str, user_data: dict) -> bool:
+    """Verify either hashed PIN or legacy plain PIN without exposing values."""
+    stored_hash = str(user_data.get("pin_hash", "") or "")
+    if stored_hash:
+        try:
+            algo, iterations_raw, salt, expected = stored_hash.split("$", 3)
+            if algo != "pbkdf2_sha256":
+                return False
+            digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                str(pin).encode(),
+                salt.encode(),
+                int(iterations_raw),
+            ).hex()
+            return hmac.compare_digest(digest, expected)
+        except Exception:
+            return False
+
+    return hmac.compare_digest(str(user_data.get("pin", "")), str(pin))
 
 
 class BaseDashboardButton(ButtonEntity):
@@ -35,6 +67,41 @@ class BaseDashboardButton(ButtonEntity):
         dashboard = self.config_data.get("dashboard", {})
         return str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
 
+    def _pin_locked_remaining(self, station: str) -> int:
+        locked_raw = self.state_data.get("pin_locked_until", {}).get(station)
+        if not locked_raw:
+            return 0
+        try:
+            locked_until = datetime.fromisoformat(locked_raw)
+            return max(int((locked_until - datetime.now()).total_seconds()), 0)
+        except Exception:
+            return 0
+
+    def _verify_dashboard_pin(self, pin: str) -> tuple[bool, str]:
+        for person, data in self.config_data.get("auth", {}).get("users", {}).items():
+            if _verify_pin_value(pin, data if isinstance(data, dict) else {}):
+                return True, str(person)
+        return False, ""
+
+    def _record_bad_pin(self, station: str) -> None:
+        attempts = int(self.state_data.get("pin_bad_attempts", {}).get(station, 0)) + 1
+        self.state_data.setdefault("pin_bad_attempts", {})[station] = attempts
+
+        max_attempts = int(self.config_data.get("auth", {}).get("max_bad_pin_attempts", 3))
+        remaining_attempts = max(max_attempts - attempts, 0)
+
+        self.state_data["dashboard_confirm"] = False
+
+        if attempts >= max_attempts:
+            lockout_seconds = int(self.config_data.get("auth", {}).get("lockout_seconds_after_bad_pins", 120))
+            until = datetime.now() + timedelta(seconds=lockout_seconds)
+            self.state_data.setdefault("pin_locked_until", {})[station] = until.isoformat()
+            self.state_data["pin_bad_attempts"][station] = 0
+            self.state_data["last_event"] = f"Invalid PIN. Terminal locked until {until.strftime('%H:%M:%S')}."
+        else:
+            suffix = "s" if remaining_attempts != 1 else ""
+            self.state_data["last_event"] = f"Invalid PIN. {remaining_attempts} attempt{suffix} left before lockout."
+
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
@@ -49,31 +116,42 @@ class DashboardConfirmButton(BaseDashboardButton):
     async def async_press(self) -> None:
         pin = str(self.state_data.get("dashboard_pin", ""))
         target = str(self.state_data.get("dashboard_target", ""))
+        station = self.dashboard_station()
 
         if not pin:
             self.state_data["last_event"] = "Dashboard confirm rejected. Missing PIN."
             self.state_data["dashboard_confirm"] = False
-            self.state_data["dashboard_confirmed_by"] = ""
-            self.state_data["dashboard_auth_status"] = "invalid"
-            self.state_data["dashboard_auth_message"] = "Missing PIN."
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            return
+
+        if len(pin) > 4:
+            self.state_data["last_event"] = "Dashboard confirm rejected. PIN must be 4 digits or fewer."
+            self.state_data["dashboard_confirm"] = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         if not target:
             self.state_data["last_event"] = "Dashboard confirm rejected. Missing target."
             self.state_data["dashboard_confirm"] = False
-            self.state_data["dashboard_confirmed_by"] = ""
-            self.state_data["dashboard_auth_status"] = "invalid"
-            self.state_data["dashboard_auth_message"] = "Missing target."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
-        await self.hass.services.async_call(
-            DOMAIN,
-            "dashboard_confirm_pin",
-            {"pin": pin, "target": target, "station": self.dashboard_station()},
-            blocking=True,
-        )
+        remaining = self._pin_locked_remaining(station)
+        if remaining > 0:
+            self.state_data["last_event"] = f"PIN entry locked at {station} for {remaining} seconds."
+            self.state_data["dashboard_confirm"] = False
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            return
+
+        valid, launcher = self._verify_dashboard_pin(pin)
+        if not valid:
+            self._record_bad_pin(station)
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            return
+
+        self.state_data.setdefault("pin_bad_attempts", {})[station] = 0
+        self.state_data["dashboard_confirm"] = True
+        self.state_data["last_event"] = f"Dashboard target confirmed by {launcher}. Target locked: {target}."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
@@ -85,12 +163,11 @@ class DashboardLaunchButton(BaseDashboardButton):
     async def async_press(self) -> None:
         pin = str(self.state_data.get("dashboard_pin", ""))
         target = str(self.state_data.get("dashboard_target", ""))
+        station = self.dashboard_station()
 
         if not pin:
             self.state_data["last_event"] = "Dashboard launch rejected. Missing PIN."
             self.state_data["dashboard_confirm"] = False
-            self.state_data["dashboard_auth_status"] = "invalid"
-            self.state_data["dashboard_auth_message"] = "Missing PIN."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
@@ -98,28 +175,27 @@ class DashboardLaunchButton(BaseDashboardButton):
             self.state_data["last_event"] = "Dashboard launch rejected. Missing target."
             self.state_data["dashboard_pin"] = ""
             self.state_data["dashboard_confirm"] = False
-            self.state_data["dashboard_auth_status"] = "invalid"
-            self.state_data["dashboard_auth_message"] = "Missing target."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         if not bool(self.state_data.get("dashboard_confirm", False)):
             self.state_data["last_event"] = "Dashboard launch rejected. Confirm valid PIN before launch."
-            self.state_data["dashboard_auth_status"] = "invalid"
-            self.state_data["dashboard_auth_message"] = "Press CONFIRM with a valid PIN before launch."
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
-        self.state_data["dashboard_auth_status"] = "launching"
-        self.state_data["dashboard_auth_message"] = "Launch sent. Applying rules..."
+        self.state_data["last_event"] = f"Launch sent for target {target}. Applying rules..."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
         await self.hass.services.async_call(
             DOMAIN,
             "launch_with_pin",
-            {"pin": pin, "target": target, "station": self.dashboard_station()},
+            {"pin": pin, "target": target, "station": station},
             blocking=False,
         )
+
+        self.state_data["dashboard_pin"] = ""
+        self.state_data["dashboard_confirm"] = False
+        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
 class DashboardCancelButton(BaseDashboardButton):
@@ -137,7 +213,5 @@ class DashboardCancelButton(BaseDashboardButton):
         self.state_data["dashboard_pin"] = ""
         self.state_data["dashboard_target"] = default_target if default_target in targets else (str(targets[0]) if targets else "")
         self.state_data["dashboard_confirm"] = False
-        self.state_data["dashboard_confirmed_by"] = ""
-        self.state_data["dashboard_auth_status"] = "idle"
-        self.state_data["dashboard_auth_message"] = "Cancelled. Enter PIN and confirm target."
+        self.state_data["last_event"] = "Dashboard command cancelled."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)

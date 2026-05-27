@@ -61,7 +61,6 @@ PERSON_SCHEMA = vol.Schema({vol.Required("person"): cv.string})
 DASHBOARD_KEYPRESS_SCHEMA = vol.Schema({vol.Required("digit"): cv.string})
 DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
-DASHBOARD_CONFIRM_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string, vol.Required("target"): cv.string, vol.Optional("station", default="dashboard"): cv.string})
 HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 AUTH_SOURCE_SCHEMA = vol.Schema({})
 CONFIG_AUDIT_SCHEMA = vol.Schema({})
@@ -622,11 +621,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "adguard_managed_rule_count": int(stored.get("adguard_managed_rule_count", 0)),
         "dashboard_pin": "",
         "dashboard_target": str(stored.get("dashboard_target", "")),
-        "dashboard_confirm": False,
-        "dashboard_confirmed_by": "",
-        "dashboard_auth_status": "idle",
-        "dashboard_auth_message": "Enter PIN and confirm target.",
-        "dashboard_last_bad_pin": False,
+        "dashboard_confirm": bool(stored.get("dashboard_confirm", False)),
     }
 
     for person, value in stored.get("blocked_until", {}).items():
@@ -907,64 +902,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         # Backward compatible fallback. Prefer pin_hash in new configs.
         return hmac.compare_digest(str(user_data.get("pin", "")), str(pin))
 
-    def dashboard_station_id() -> str:
-        dashboard = conf().get("dashboard", {})
-        return str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
-
-    def pin_lock_remaining(station: str) -> int:
-        locked_raw = st()["pin_locked_until"].get(station)
-        if not locked_raw:
-            return 0
-        try:
-            locked_until = datetime.fromisoformat(locked_raw)
-            return max(int((locked_until - datetime.now()).total_seconds()), 0)
-        except Exception:
-            return 0
-
-    def verify_dashboard_pin(pin: str, station: str) -> tuple[bool, str, str]:
-        """Verify dashboard PIN without launching."""
-        if len(pin) > 4:
-            return False, "", "PIN must be 4 digits or fewer."
-
-        remaining = pin_lock_remaining(station)
-        if remaining > 0:
-            return False, "", f"PIN entry locked for {remaining} seconds."
-
-        for person, data in conf()["auth"]["users"].items():
-            if verify_pin_value(pin, data if isinstance(data, dict) else {}):
-                return True, person, f"PIN confirmed for {person}."
-
-        return False, "", "Invalid PIN."
-
-    async def record_bad_pin(station: str) -> None:
-        attempts = int(st()["pin_bad_attempts"].get(station, 0)) + 1
-        st()["pin_bad_attempts"][station] = attempts
-        max_attempts = int(conf()["auth"]["max_bad_pin_attempts"])
-        remaining_attempts = max(max_attempts - attempts, 0)
-
-        st()["dashboard_confirm"] = False
-        st()["dashboard_confirmed_by"] = ""
-        st()["dashboard_auth_status"] = "locked" if remaining_attempts <= 0 else "invalid"
-        st()["dashboard_last_bad_pin"] = True
-
-        if attempts >= max_attempts:
-            until = datetime.now() + timedelta(seconds=conf()["auth"]["lockout_seconds_after_bad_pins"])
-            st()["pin_locked_until"][station] = until.isoformat()
-            st()["pin_bad_attempts"][station] = 0
-            st()["dashboard_auth_message"] = f"Invalid PIN. Locked until {until.strftime('%H:%M:%S')}."
-            await log_event(f"Too many bad PIN attempts at {station}. Terminal locked temporarily.")
-        else:
-            suffix = "s" if remaining_attempts != 1 else ""
-            st()["dashboard_auth_message"] = f"Invalid PIN. {remaining_attempts} attempt{suffix} left before lockout."
-            await log_event(f"Bad PIN attempt at {station}. {remaining_attempts} attempt{suffix} left before lockout.")
-
-    def set_dashboard_idle(message: str = "Enter PIN and confirm target.") -> None:
-        st()["dashboard_confirm"] = False
-        st()["dashboard_confirmed_by"] = ""
-        st()["dashboard_auth_status"] = "idle"
-        st()["dashboard_auth_message"] = message
-        st()["dashboard_last_bad_pin"] = False
-
     def station_record(station: str):
         stations = conf()["stations"]
         dashboard = conf().get("dashboard", {})
@@ -1097,15 +1034,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if len(pin) > 4:
             await log_event(f"Launch rejected. PIN longer than 4 characters at {station or 'unknown station'}.")
             return
-
         locked_raw = st()["pin_locked_until"].get(station)
         if locked_raw:
             try:
                 locked_until = datetime.fromisoformat(locked_raw)
                 if locked_until > datetime.now():
-                    st()["dashboard_confirm"] = False
-                    st()["dashboard_auth_status"] = "locked"
-                    st()["dashboard_auth_message"] = f"PIN entry locked until {locked_until.strftime('%H:%M:%S')}."
                     await log_event(f"PIN entry locked at {station} until {locked_until.strftime('%H:%M:%S')}.")
                     return
             except Exception:
@@ -1118,14 +1051,52 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 break
 
         if not launcher:
-            await record_bad_pin(station)
+            attempts = int(st()["pin_bad_attempts"].get(station, 0)) + 1
+            st()["pin_bad_attempts"][station] = attempts
+            entry = hass.data.get(DOMAIN, {}).get("config_entry")
+            opts = dict(getattr(entry, "options", {}) or {})
+            source = "UI options" if bool(opts.get("use_ui_config", False)) else "YAML"
+            advanced = "on" if bool(opts.get("use_advanced_yaml_overrides", False)) else "off"
+            hashed_users = [
+                person for person, data in conf()["auth"]["users"].items()
+                if isinstance(data, dict) and data.get("pin_hash")
+            ]
+
+            if attempts >= conf()["auth"]["max_bad_pin_attempts"]:
+                until = datetime.now() + timedelta(seconds=conf()["auth"]["lockout_seconds_after_bad_pins"])
+                st()["pin_locked_until"][station] = until.isoformat()
+                st()["pin_bad_attempts"][station] = 0
+                await log_event(
+                    f"Too many bad PIN attempts at {station}. Terminal locked temporarily. "
+                    f"Auth source: {source}. Advanced YAML overrides: {advanced}."
+                )
+            else:
+                await log_event(
+                    f"Bad PIN attempt at {station}. Auth source: {source}. "
+                    f"Advanced YAML overrides: {advanced}. "
+                    f"Hashed PIN users: {', '.join(hashed_users) if hashed_users else 'none'}."
+                )
             return
 
         st()["pin_bad_attempts"][station] = 0
-        st()["dashboard_auth_status"] = "launched"
-        st()["dashboard_auth_message"] = f"Launch accepted. {launcher} launched at {call.data['target']}."
-        await update_entities()
         await apply_launch(launcher, call.data["target"], station)
+
+    async def handle_clear_all(call: ServiceCall) -> None:
+        st()["mutual_destruction"] = False
+        st()["daily_launches"] = 0
+        st()["conflict_chain"] = 0
+        st()["last_launcher"] = ""
+        st()["last_target"] = ""
+        for person in conf()["people"]:
+            st()["blocked_until"][person] = None
+        await log_event("All DEFCON timeouts cleared.")
+        await enforce_now()
+
+    async def handle_stand_down(call: ServiceCall) -> None:
+        st()["conflict_chain"] = 0
+        st()["last_launcher"] = ""
+        st()["last_target"] = ""
+        await log_event("Stand down accepted. Conflict chain reset.")
 
     async def handle_set_armed(call: ServiceCall) -> None:
         st()["armed"] = bool(call.data["enabled"])
@@ -1251,35 +1222,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             message += " Skipped: " + "; ".join(skipped) + "."
         await log_event(message)
 
-    async def handle_dashboard_confirm_pin(call: ServiceCall) -> None:
-        pin = "".join(ch for ch in str(call.data["pin"]) if ch.isdigit())[:4]
-        target = str(call.data["target"])
-        station = str(call.data.get("station", dashboard_station_id()))
-
-        if target not in dashboard_targets():
-            st()["dashboard_confirm"] = False
-            st()["dashboard_confirmed_by"] = ""
-            st()["dashboard_auth_status"] = "invalid"
-            st()["dashboard_auth_message"] = f"Target {target} is not allowed."
-            await update_entities()
-            return
-
-        ok, launcher, message = verify_dashboard_pin(pin, station)
-        if not ok:
-            await record_bad_pin(station)
-            await update_entities()
-            return
-
-        st()["pin_bad_attempts"][station] = 0
-        st()["dashboard_pin"] = pin
-        st()["dashboard_target"] = target
-        st()["dashboard_confirm"] = True
-        st()["dashboard_confirmed_by"] = launcher
-        st()["dashboard_auth_status"] = "confirmed"
-        st()["dashboard_auth_message"] = f"Confirmed by {launcher}. Target locked: {target}."
-        st()["dashboard_last_bad_pin"] = False
-        await update_entities()
-
     async def handle_dashboard_keypress(call: ServiceCall) -> None:
         digit = str(call.data["digit"])
         if digit not in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
@@ -1288,24 +1230,24 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if len(current) >= 4:
             return
         st()["dashboard_pin"] = current + digit
-        set_dashboard_idle("PIN changed. Press CONFIRM to validate.")
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_backspace(call: ServiceCall) -> None:
         current = "".join(ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit())
         st()["dashboard_pin"] = current[:-1]
-        set_dashboard_idle("PIN changed. Press CONFIRM to validate.")
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_clear_pin(call: ServiceCall) -> None:
         st()["dashboard_pin"] = ""
-        set_dashboard_idle("PIN cleared.")
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_set_pin(call: ServiceCall) -> None:
         pin = "".join(ch for ch in str(call.data["pin"]) if ch.isdigit())
         st()["dashboard_pin"] = pin[:4]
-        set_dashboard_idle("PIN changed. Press CONFIRM to validate.")
+        st()["dashboard_confirm"] = False
         await update_entities()
 
     async def handle_dashboard_select_target(call: ServiceCall) -> None:
@@ -1395,7 +1337,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "reload_config", handle_reload_config)
     hass.services.async_register(DOMAIN, "block_person", handle_block_person, schema=PERSON_SCHEMA)
     hass.services.async_register(DOMAIN, "unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
-    hass.services.async_register(DOMAIN, "dashboard_confirm_pin", handle_dashboard_confirm_pin, schema=DASHBOARD_CONFIRM_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "dashboard_keypress", handle_dashboard_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
     hass.services.async_register(DOMAIN, "dashboard_backspace", handle_dashboard_backspace)
     hass.services.async_register(DOMAIN, "dashboard_clear_pin", handle_dashboard_clear_pin)
