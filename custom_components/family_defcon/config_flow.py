@@ -16,6 +16,7 @@ from .const import DOMAIN
 
 PEOPLE_SLOTS = 8
 STATION_SLOTS = 8
+MAX_PIN_LENGTH = 4
 
 
 def hash_pin_for_options(pin: str, iterations: int = 200000) -> str:
@@ -103,6 +104,16 @@ def _station_defaults(options: dict[str, Any]) -> list[dict[str, Any]]:
     while len(out) < STATION_SLOTS:
         out.append({"id": "", "name": "", "enabled": True, "key_entity": ""})
     return out
+
+
+def _validate_people_pin_lengths(user_input: dict[str, Any]) -> dict[str, str]:
+    """Validate write-only PIN fields before hashing."""
+    errors: dict[str, str] = {}
+    for i in range(1, PEOPLE_SLOTS + 1):
+        pin = str(user_input.get(f"person_{i}_pin", "") or "")
+        if len(pin) > MAX_PIN_LENGTH:
+            errors[f"person_{i}_pin"] = "pin_too_long"
+    return errors
 
 
 def _build_people_options(user_input: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
@@ -283,9 +294,20 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_people(self, user_input: dict[str, Any] | None = None):
         opts = self._pending
         if user_input is not None:
+            errors = _validate_people_pin_lengths(user_input)
+            if errors:
+                return self.async_show_form(
+                    step_id="people",
+                    data_schema=self._people_schema(opts),
+                    errors=errors,
+                )
             opts = _build_people_options(user_input, opts)
             return self.async_create_entry(title="", data=opts)
 
+        return self.async_show_form(step_id="people", data_schema=self._people_schema(opts))
+
+    def _people_schema(self, opts: dict[str, Any]) -> vol.Schema:
+        """Return guided people schema."""
         defaults = _person_defaults(opts)
         fields = {}
         for idx, person in enumerate(defaults, start=1):
@@ -298,8 +320,7 @@ class FamilyDefconOptionsFlowHandler(config_entries.OptionsFlow):
             fields[vol.Optional(f"{prefix}_default_target", default=person["default_target"])] = bool
             fields[vol.Optional(f"{prefix}_parent_target", default=person["parent_target"])] = bool
             fields[vol.Optional(f"{prefix}_dashboard_target", default=person["dashboard_target"])] = bool
-
-        return self.async_show_form(step_id="people", data_schema=vol.Schema(fields))
+        return vol.Schema(fields)
 
     async def async_step_system(self, user_input: dict[str, Any] | None = None):
         opts = self._pending

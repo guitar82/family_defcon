@@ -23,12 +23,17 @@ class DashboardTargetSelect(SelectEntity):
 
     @property
     def options(self) -> list[str]:
+        """Return active dashboard targets from normalized config."""
         config = self.hass.data[DOMAIN]["config"]
         dashboard = config.get("dashboard", {})
         configured = dashboard.get("targets") if isinstance(dashboard, dict) else None
+        people = set(config.get("people", []))
+
         if isinstance(configured, list) and configured:
-            return [str(item) for item in configured]
-        return list(dict.fromkeys(config["default_targets"] + config["parent_targets"]))
+            return [str(item) for item in configured if not people or str(item) in people]
+
+        fallback = list(dict.fromkeys(config.get("default_targets", []) + config.get("parent_targets", [])))
+        return [str(item) for item in fallback if not people or str(item) in people]
 
     @property
     def current_option(self) -> str | None:

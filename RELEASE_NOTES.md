@@ -1,5 +1,22 @@
 # Family DEFCON Release Notes
 
+## v5.8.0
+
+- Added 4 character max validation for guided UI PIN entry.
+- Added backend rejection for launch PINs longer than 4 characters.
+- Added active config validation for people, targets, auth users, AdGuard clients, dashboard targets, and dashboard station.
+- Dashboard launch button now uses configured dashboard station ID.
+- Target select now filters through active config dashboard targets and people.
+- Added `family_defcon.config_audit_status` diagnostic service.
+
+## v5.7.0
+
+- Fixed dashboard launches rejected as unknown station dashboard.
+- Guaranteed dashboard station record exists during config normalization.
+- Added station_record fallback for dashboard station.
+- Migration now backfills the dashboard station into stations_list.
+- Improved bad PIN diagnostics without exposing PIN values.
+
 ## v5.6.0
 
 - Fixed Advanced raw YAML fields repopulating and overriding guided UI settings.

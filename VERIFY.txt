@@ -1,12 +1,15 @@
-Family DEFCON v5.6 Advanced YAML Clear Fix verification
+Family DEFCON v5.8 Config Audit + 4 Character PINs verification
 Python compile: OK
-manifest version 5.6.0: OK
-Advanced YAML disabled by default: OK
-Advanced YAML ignored unless explicitly enabled: OK
-Clear advanced YAML overrides option added: OK
-Advanced YAML fields no longer repopulate when disabled: OK
-auth_config_status reports advanced override status: OK
-Hidden/write-only hashed PIN behavior preserved: OK
-Number box behavior from v5.5 preserved: OK
+manifest version 5.8.0: OK
+Guided PIN fields remain hidden/write-only: OK
+Guided UI rejects PINs longer than 4 characters: OK
+Backend launch rejects PINs longer than 4 characters: OK
+Active config validates people/targets/auth/clients/dashboard station: OK
+Dashboard launch uses configured dashboard station ID: OK
+Target select uses active dashboard targets: OK
+config_audit_status service added: OK
+auth_config_status service preserved: OK
+Advanced YAML clear fix preserved: OK
+Dashboard station fix preserved: OK
 README updated: OK
 RELEASE_NOTES updated: OK

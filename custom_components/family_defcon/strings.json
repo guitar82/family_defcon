@@ -36,7 +36,7 @@
         "data": {
           "person_1_name": "Person 1 name",
           "person_1_role": "Person 1 role",
-          "person_1_pin": "Person 1 new PIN, hidden and hashed when saved",
+          "person_1_pin": "Person 1 new PIN, hidden, max 4 characters",
           "person_1_pin_hash": "Person 1 saved PIN hash",
           "person_1_adguard_client": "Person 1 AdGuard client name",
           "person_1_default_target": "Person 1 is child/default target",
@@ -44,7 +44,7 @@
           "person_1_dashboard_target": "Person 1 shows on dashboard",
           "person_2_name": "Person 2 name",
           "person_2_role": "Person 2 role",
-          "person_2_pin": "Person 2 new PIN, hidden and hashed when saved",
+          "person_2_pin": "Person 2 new PIN, hidden, max 4 characters",
           "person_2_pin_hash": "Person 2 saved PIN hash",
           "person_2_adguard_client": "Person 2 AdGuard client name",
           "person_2_default_target": "Person 2 is child/default target",
@@ -52,7 +52,7 @@
           "person_2_dashboard_target": "Person 2 shows on dashboard",
           "person_3_name": "Person 3 name",
           "person_3_role": "Person 3 role",
-          "person_3_pin": "Person 3 new PIN, hidden and hashed when saved",
+          "person_3_pin": "Person 3 new PIN, hidden, max 4 characters",
           "person_3_pin_hash": "Person 3 saved PIN hash",
           "person_3_adguard_client": "Person 3 AdGuard client name",
           "person_3_default_target": "Person 3 is child/default target",
@@ -60,7 +60,7 @@
           "person_3_dashboard_target": "Person 3 shows on dashboard",
           "person_4_name": "Person 4 name",
           "person_4_role": "Person 4 role",
-          "person_4_pin": "Person 4 new PIN, hidden and hashed when saved",
+          "person_4_pin": "Person 4 new PIN, hidden, max 4 characters",
           "person_4_pin_hash": "Person 4 saved PIN hash",
           "person_4_adguard_client": "Person 4 AdGuard client name",
           "person_4_default_target": "Person 4 is child/default target",
@@ -68,7 +68,7 @@
           "person_4_dashboard_target": "Person 4 shows on dashboard",
           "person_5_name": "Person 5 name",
           "person_5_role": "Person 5 role",
-          "person_5_pin": "Person 5 new PIN, hidden and hashed when saved",
+          "person_5_pin": "Person 5 new PIN, hidden, max 4 characters",
           "person_5_pin_hash": "Person 5 saved PIN hash",
           "person_5_adguard_client": "Person 5 AdGuard client name",
           "person_5_default_target": "Person 5 is child/default target",
@@ -76,7 +76,7 @@
           "person_5_dashboard_target": "Person 5 shows on dashboard",
           "person_6_name": "Person 6 name",
           "person_6_role": "Person 6 role",
-          "person_6_pin": "Person 6 new PIN, hidden and hashed when saved",
+          "person_6_pin": "Person 6 new PIN, hidden, max 4 characters",
           "person_6_pin_hash": "Person 6 saved PIN hash",
           "person_6_adguard_client": "Person 6 AdGuard client name",
           "person_6_default_target": "Person 6 is child/default target",
@@ -84,7 +84,7 @@
           "person_6_dashboard_target": "Person 6 shows on dashboard",
           "person_7_name": "Person 7 name",
           "person_7_role": "Person 7 role",
-          "person_7_pin": "Person 7 new PIN, hidden and hashed when saved",
+          "person_7_pin": "Person 7 new PIN, hidden, max 4 characters",
           "person_7_pin_hash": "Person 7 saved PIN hash",
           "person_7_adguard_client": "Person 7 AdGuard client name",
           "person_7_default_target": "Person 7 is child/default target",
@@ -92,7 +92,7 @@
           "person_7_dashboard_target": "Person 7 shows on dashboard",
           "person_8_name": "Person 8 name",
           "person_8_role": "Person 8 role",
-          "person_8_pin": "Person 8 new PIN, hidden and hashed when saved",
+          "person_8_pin": "Person 8 new PIN, hidden, max 4 characters",
           "person_8_pin_hash": "Person 8 saved PIN hash",
           "person_8_adguard_client": "Person 8 AdGuard client name",
           "person_8_default_target": "Person 8 is child/default target",
@@ -195,6 +195,9 @@
           "clear_advanced_yaml_overrides": "Clear advanced raw YAML overrides"
         }
       }
+    },
+    "error": {
+      "pin_too_long": "PIN must be 4 characters or fewer."
     }
   }
 }

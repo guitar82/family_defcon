@@ -63,6 +63,7 @@ DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
 HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 AUTH_SOURCE_SCHEMA = vol.Schema({})
+CONFIG_AUDIT_SCHEMA = vol.Schema({})
 
 
 
@@ -127,6 +128,19 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     options.setdefault("dashboard_station_id", str(options.get("dashboard_station_id", "dashboard")))
     options.setdefault("dashboard_default_target", str(options.get("dashboard_default_target", "")))
     options.setdefault("stations_list", options.get("stations_list", []))
+
+    station_id = str(options.get("dashboard_station_id", "dashboard") or "dashboard")
+    stations_list = options.get("stations_list", [])
+    if not isinstance(stations_list, list):
+        stations_list = []
+    if not any(isinstance(item, dict) and str(item.get("id", "")) == station_id for item in stations_list):
+        stations_list.append({
+            "id": station_id,
+            "name": "Home Assistant Dashboard",
+            "enabled": True,
+            "key_entity": "",
+        })
+    options["stations_list"] = stations_list
 
     data = dict(entry.data or {})
     data.setdefault("name", data.get("name", "Family DEFCON"))
@@ -307,6 +321,81 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     def _dict_value(value, fallback: dict) -> dict:
         return value if isinstance(value, dict) else dict(fallback)
+
+    def ensure_dashboard_station(normalized: dict) -> dict:
+        """Guarantee the dashboard station exists.
+
+        Older config entries may have dashboard.station_id set to "dashboard" but
+        no matching station record in stations_list or YAML. Without this,
+        dashboard launches fail with: Launch rejected. Unknown station dashboard.
+        """
+        dashboard = normalized.get("dashboard", {})
+        if not isinstance(dashboard, dict):
+            dashboard = {}
+            normalized["dashboard"] = dashboard
+
+        station_id = str(dashboard.get("station_id", "") or "dashboard")
+        dashboard["station_id"] = station_id
+
+        if not isinstance(normalized.get("stations"), dict):
+            normalized["stations"] = {}
+
+        if station_id not in normalized["stations"]:
+            normalized["stations"][station_id] = {
+                "name": "Home Assistant Dashboard",
+                "enabled": True,
+                "key_entity": "",
+            }
+
+        return normalized
+
+    def validate_active_config(normalized: dict) -> dict:
+        """Clean and validate cross references in the active normalized config."""
+        people = [str(person) for person in normalized.get("people", []) if str(person).strip()]
+        normalized["people"] = people
+        people_set = set(people)
+
+        normalized["default_targets"] = [
+            str(person) for person in normalized.get("default_targets", [])
+            if str(person) in people_set
+        ]
+        normalized["parent_targets"] = [
+            str(person) for person in normalized.get("parent_targets", [])
+            if str(person) in people_set
+        ]
+
+        auth_users = normalized.get("auth", {}).get("users", {})
+        if not isinstance(auth_users, dict):
+            auth_users = {}
+        normalized["auth"]["users"] = {
+            person: auth_users.get(person, {"role": "child"})
+            for person in people
+        }
+
+        clients = normalized.get("dns", {}).get("adguard_home", {}).get("clients", {})
+        if not isinstance(clients, dict):
+            clients = {}
+        normalized["dns"]["adguard_home"]["clients"] = {
+            person: clients.get(person, {"client_name": person, "enabled": True})
+            for person in people
+        }
+
+        dashboard = normalized.get("dashboard", {})
+        if not isinstance(dashboard, dict):
+            dashboard = {}
+        dash_targets = dashboard.get("targets", normalized.get("default_targets", []))
+        if not isinstance(dash_targets, list):
+            dash_targets = normalized.get("default_targets", [])
+        dashboard["targets"] = [str(person) for person in dash_targets if str(person) in people_set]
+        if not dashboard["targets"]:
+            dashboard["targets"] = normalized.get("default_targets", []) or people
+        dashboard["default_target"] = str(dashboard.get("default_target") or (dashboard["targets"][0] if dashboard["targets"] else ""))
+        if dashboard["default_target"] not in people_set and dashboard["targets"]:
+            dashboard["default_target"] = dashboard["targets"][0]
+        dashboard["station_id"] = str(dashboard.get("station_id", "dashboard") or "dashboard")
+        normalized["dashboard"] = dashboard
+
+        return ensure_dashboard_station(normalized)
 
     def apply_options_overrides(normalized: dict) -> dict:
         """Apply UI options over YAML values.
@@ -499,8 +588,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if opts.get("adguard_rule_prefix"):
             normalized["dns"]["adguard_home"]["rule_prefix"] = str(opts["adguard_rule_prefix"])
 
-        return normalized
-
+        return validate_active_config(normalized)
     raw = await load_yaml(hass.data.get(DOMAIN, {}).get("config_path", CONFIG_PATH))
     if not raw:
         _LOGGER.warning("Family DEFCON config missing or empty at %s.", hass.config.path(CONFIG_PATH))
@@ -816,8 +904,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     def station_record(station: str):
         stations = conf()["stations"]
+        dashboard = conf().get("dashboard", {})
+        dashboard_station_id = str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+
         if station in stations:
             return station, stations[station]
+
+        # Safety fallback for older migrated configs where the dashboard station record was missing.
+        if station == dashboard_station_id:
+            return dashboard_station_id, {
+                "name": "Home Assistant Dashboard",
+                "enabled": True,
+                "key_entity": "",
+            }
+
         for station_id, record in stations.items():
             if record.get("name") == station:
                 return station_id, record
@@ -929,6 +1029,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_launch_with_pin(call: ServiceCall) -> None:
         station = call.data.get("station", "")
+        pin = str(call.data.get("pin", ""))
+
+        if len(pin) > 4:
+            await log_event(f"Launch rejected. PIN longer than 4 characters at {station or 'unknown station'}.")
+            return
         locked_raw = st()["pin_locked_until"].get(station)
         if locked_raw:
             try:
@@ -941,20 +1046,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         launcher = None
         for person, data in conf()["auth"]["users"].items():
-            if verify_pin_value(str(call.data["pin"]), data if isinstance(data, dict) else {}):
+            if verify_pin_value(pin, data if isinstance(data, dict) else {}):
                 launcher = person
                 break
 
         if not launcher:
             attempts = int(st()["pin_bad_attempts"].get(station, 0)) + 1
             st()["pin_bad_attempts"][station] = attempts
+            entry = hass.data.get(DOMAIN, {}).get("config_entry")
+            opts = dict(getattr(entry, "options", {}) or {})
+            source = "UI options" if bool(opts.get("use_ui_config", False)) else "YAML"
+            advanced = "on" if bool(opts.get("use_advanced_yaml_overrides", False)) else "off"
+            hashed_users = [
+                person for person, data in conf()["auth"]["users"].items()
+                if isinstance(data, dict) and data.get("pin_hash")
+            ]
+
             if attempts >= conf()["auth"]["max_bad_pin_attempts"]:
                 until = datetime.now() + timedelta(seconds=conf()["auth"]["lockout_seconds_after_bad_pins"])
                 st()["pin_locked_until"][station] = until.isoformat()
                 st()["pin_bad_attempts"][station] = 0
-                await log_event(f"Too many bad PIN attempts at {station}. Terminal locked temporarily.")
+                await log_event(
+                    f"Too many bad PIN attempts at {station}. Terminal locked temporarily. "
+                    f"Auth source: {source}. Advanced YAML overrides: {advanced}."
+                )
             else:
-                await log_event(f"Bad PIN attempt at {station}.")
+                await log_event(
+                    f"Bad PIN attempt at {station}. Auth source: {source}. "
+                    f"Advanced YAML overrides: {advanced}. "
+                    f"Hashed PIN users: {', '.join(hashed_users) if hashed_users else 'none'}."
+                )
             return
 
         st()["pin_bad_attempts"][station] = 0
@@ -1024,6 +1145,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             notification_id="family_defcon_pin_hash",
         )
         await log_event("PIN hash generated in Home Assistant notifications.")
+
+    async def handle_config_audit_status(call: ServiceCall) -> None:
+        """Log a safe audit of active config variables without exposing PIN values."""
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+        active = conf()
+
+        auth_users = active.get("auth", {}).get("users", {})
+        hash_users = [person for person, data in auth_users.items() if isinstance(data, dict) and data.get("pin_hash")]
+        legacy_pin_users = [person for person, data in auth_users.items() if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")]
+
+        stations = active.get("stations", {})
+        dashboard = active.get("dashboard", {})
+        dashboard_station_id = str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+        missing_station = dashboard_station_id not in stations
+
+        dashboard_targets = dashboard.get("targets", []) if isinstance(dashboard, dict) else []
+        unknown_targets = [target for target in dashboard_targets if target not in active.get("people", [])]
+
+        await log_event(
+            "Config audit. "
+            + f"Source: {'UI options' if bool(opts.get('use_ui_config', False)) else 'YAML'}. "
+            + f"Advanced YAML overrides: {'on' if bool(opts.get('use_advanced_yaml_overrides', False)) else 'off'}. "
+            + f"People: {len(active.get('people', []))}. "
+            + f"Dashboard station: {dashboard_station_id} ({'missing' if missing_station else 'ok'}). "
+            + f"Dashboard targets: {', '.join(dashboard_targets) if dashboard_targets else 'none'}. "
+            + f"Unknown targets: {', '.join(unknown_targets) if unknown_targets else 'none'}. "
+            + f"Hashed PIN users: {', '.join(hash_users) if hash_users else 'none'}. "
+            + f"Legacy plain PIN users: {', '.join(legacy_pin_users) if legacy_pin_users else 'none'}."
+        )
 
     async def handle_auth_config_status(call: ServiceCall) -> None:
         """Report whether active auth came from UI options or YAML without revealing PINs."""
@@ -1193,6 +1344,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(DOMAIN, "dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
     hass.services.async_register(DOMAIN, "hash_pin", handle_hash_pin, schema=HASH_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA)
+    hass.services.async_register(DOMAIN, "config_audit_status", handle_config_audit_status, schema=CONFIG_AUDIT_SCHEMA)
     hass.services.async_register(DOMAIN, "migrate_entity_ids", handle_migrate_entity_ids)
 
     async def periodic(now: datetime) -> None:

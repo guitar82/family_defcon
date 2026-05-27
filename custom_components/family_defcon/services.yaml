@@ -143,3 +143,7 @@ migrate_entity_ids:
 auth_config_status:
   name: Auth Config Status
   description: Log whether the active PIN/auth configuration came from UI options or YAML without exposing PINs.
+
+config_audit_status:
+  name: Config Audit Status
+  description: Log a safe audit of active Family DEFCON config variables without exposing PIN values.

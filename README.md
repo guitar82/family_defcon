@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v5.6.0**
+**Current release: v5.8.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -904,3 +904,52 @@ Turn ON Clear advanced raw YAML overrides
 Save
 Then update the PIN in People, PINs, and AdGuard clients
 ```
+
+
+## v5.7.0 Dashboard station and PIN diagnostics
+
+v5.7 fixes dashboard launches being rejected with:
+
+```text
+Launch rejected. Unknown station dashboard.
+```
+
+The integration now guarantees that the configured dashboard station exists, even after migration from older config entries.
+
+It also improves bad PIN messages without exposing PIN values. Bad PIN events now show:
+
+```text
+Auth source: UI options or YAML
+Advanced YAML overrides: on or off
+Hashed PIN users list
+```
+
+This helps diagnose whether the active PIN source is the guided UI, YAML, or an old advanced override.
+
+
+## v5.8.0 Config variable audit and 4 character PINs
+
+v5.8 audits and tightens the active config path.
+
+Changes:
+
+```text
+Guided UI PIN entry rejects PINs longer than 4 characters.
+Backend launch also rejects PINs longer than 4 characters.
+Active config validation now cleans people, targets, auth users, AdGuard clients, dashboard targets, and dashboard station.
+Dashboard launch button uses the configured dashboard station ID instead of hardcoded dashboard.
+Target select filters options through active config people and dashboard targets.
+Added family_defcon.config_audit_status service.
+```
+
+Diagnostic actions:
+
+```yaml
+action: family_defcon.auth_config_status
+```
+
+```yaml
+action: family_defcon.config_audit_status
+```
+
+Neither diagnostic exposes PIN values.
