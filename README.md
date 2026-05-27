@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v4.8.0**
+**Current release: v4.9.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -648,3 +648,10 @@ DEFCON 1 = Mutual WiFi Destruction active
 ```
 
 This prevents the level from dropping from DEFCON 3 back to DEFCON 4 while multiple people are still actively blocked.
+
+
+## v4.9.0 DEFCON message sync
+
+v4.9 updates launch event messages so they use the same worst active condition logic as the DEFCON level sensor.
+
+This fixes cases where the system level correctly stays at DEFCON 3, but the last event message incorrectly says DEFCON 4 because the most recent strike was a normal first strike.

@@ -1,5 +1,12 @@
 # Family DEFCON Release Notes
 
+## v4.9.0
+
+- Fixed launch event messages to match the DEFCON severity calculation.
+- Messages now use `current_defcon_level()` after timeouts are applied.
+- Prevents messages like `DEFCON 4` when the active system condition is really DEFCON 3.
+- Added helper functions in `__init__.py`: `active_block_count()` and `current_defcon_level()`.
+
 ## v4.8.0
 
 - Fixed DEFCON level severity calculation.

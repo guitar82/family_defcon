@@ -274,6 +274,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         until = st()["blocked_until"].get(person)
         return isinstance(until, datetime) and until > datetime.now()
 
+    def active_block_count() -> int:
+        return sum(1 for person in conf()["people"] if is_blocked(person))
+
+    def current_defcon_level() -> int:
+        """Calculate DEFCON from the worst active condition, matching the level sensor."""
+        if st()["mutual_destruction"]:
+            return 1
+
+        daily_launches = int(st().get("daily_launches", 0))
+        conflict_chain = int(st().get("conflict_chain", 0))
+        launch_limit = int(conf().get("launches_before_mutual_destruction", 5))
+        chain_limit = int(conf().get("chain_before_mutual_destruction", 4))
+        active_blocks = active_block_count()
+
+        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (chain_limit > 1 and conflict_chain >= chain_limit - 1):
+            return 2
+
+        if conflict_chain >= 2 or active_blocks >= 2:
+            return 3
+
+        if active_blocks >= 1 or conflict_chain >= 1:
+            return 4
+
+        return 5
+
     async def adguard_call_json(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[bool, Any]:
         """Call AdGuard Home using JSON."""
         adguard = conf()["dns"]["adguard_home"]
@@ -504,15 +529,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         if new_chain == 1:
             await add_timeout(target, p["first_strike_target_minutes"])
-            await log_event(f"DEFCON 4. {launcher} launched at {target}. {target} receives {p['first_strike_target_minutes']} minute timeout.")
+            level = current_defcon_level()
+            await log_event(
+                f"DEFCON {level}. {launcher} launched at {target}. "
+                f"{target} receives {p['first_strike_target_minutes']} minute timeout."
+            )
         elif new_chain == 2:
             await add_timeout(launcher, p["retaliator_extra_minutes"])
             await add_timeout(target, p["retaliation_target_minutes"])
-            await log_event(f"DEFCON 3. Retaliation detected. {launcher} receives +{p['retaliator_extra_minutes']} minutes. {target} receives {p['retaliation_target_minutes']} minutes.")
-        elif new_chain == 3:
+            level = current_defcon_level()
+            await log_event(
+                f"DEFCON {level}. Retaliation detected. "
+                f"{launcher} receives +{p['retaliator_extra_minutes']} minutes. "
+                f"{target} receives {p['retaliation_target_minutes']} minutes."
+            )
+        elif new_chain >= 3:
             await add_timeout(launcher, p["reattacker_extra_minutes"])
             await add_timeout(target, p["reattack_target_minutes"])
-            await log_event(f"DEFCON 2. Escalation warning. {launcher} receives +{p['reattacker_extra_minutes']} minutes. {target} receives {p['reattack_target_minutes']} minutes. Next retaliation triggers mutual destruction.")
+            level = current_defcon_level()
+            next_warning = " Next retaliation triggers mutual destruction." if level == 2 else ""
+            await log_event(
+                f"DEFCON {level}. Escalation warning. "
+                f"{launcher} receives +{p['reattacker_extra_minutes']} minutes. "
+                f"{target} receives {p['reattack_target_minutes']} minutes."
+                f"{next_warning}"
+            )
 
         await enforce_now()
 
