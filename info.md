@@ -7,3 +7,5 @@ Install through HACS, then add the integration from Home Assistant:
 Settings → Devices & services → Add integration → Family DEFCON
 
 Advanced family/game configuration stays in `/config/family_defcon.yaml`.
+
+Current release: v4.7.0. Fixes dashboard target confirmed sensor creation.

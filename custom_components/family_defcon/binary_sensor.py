@@ -6,7 +6,10 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, SIGNAL_UPDATE
 
 async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([MutualDestructionBinarySensor(hass)])
+    async_add_entities([
+        MutualDestructionBinarySensor(hass),
+        DashboardTargetConfirmedSensor(hass),
+    ])
 
 class MutualDestructionBinarySensor(BinarySensorEntity):
     _attr_name = "Mutual WiFi Destruction"; _attr_unique_id = "family_defcon_mutual_wifi_destruction"; _attr_has_entity_name = True

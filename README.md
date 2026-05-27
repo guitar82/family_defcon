@@ -1,6 +1,6 @@
 # Family DEFCON
 
-**Current release: v4.6.0**
+**Current release: v4.7.0**
 
 Family DEFCON is a Home Assistant custom integration that creates a playful DEFCON style family WiFi timeout system.
 
@@ -611,3 +611,23 @@ It does not overwrite your local:
 ```
 
 Your personal people, PINs, targets, and AdGuard settings remain local.
+
+
+## v4.7.0 Confirm sensor setup fix
+
+v4.7 fixes the dashboard target confirmed binary sensor so Home Assistant actually creates it during binary sensor platform setup.
+
+After updating and restarting, search Developer Tools → States for:
+
+```text
+target_confirmed
+```
+
+You should see one of these:
+
+```text
+binary_sensor.dashboard_target_confirmed
+binary_sensor.family_defcon_dashboard_target_confirmed
+```
+
+This entity is what changes the dashboard from TARGET READY to TARGET LOCKED after CONFIRM is pressed.

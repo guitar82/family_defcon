@@ -1,5 +1,11 @@
 # Family DEFCON Release Notes
 
+## v4.7.0
+
+- Fixed `binary_sensor.dashboard_target_confirmed` not being created.
+- `binary_sensor.py` now adds both Mutual WiFi Destruction and Dashboard Target Confirmed sensors during setup.
+- This fixes the dashboard TARGET LOCKED visual state after pressing CONFIRM.
+
 ## v4.6.0
 
 Documentation and package cleanup release.

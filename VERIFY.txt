@@ -1,14 +1,9 @@
-Family DEFCON v4.6 Complete Docs verification
+Family DEFCON v4.7 Confirm Sensor Fix verification
 Python compile: OK
-Required repo files present: OK
-manifest version 4.6.0: OK
-config_flow support: OK
-dashboard_select_target service in code/docs/examples: OK
-target confirmed binary sensor in code/docs: OK
-4 digit PIN in code/docs: OK
-dashboard examples updated: OK
-README rebuilt and current: OK
-RELEASE_NOTES added: OK
-info.md updated: OK
-generic family_defcon.yaml kept generic: OK
-old AdGuard endpoints not present: OK
+manifest version 4.7.0: OK
+binary_sensor.py adds MutualDestructionBinarySensor: OK
+binary_sensor.py adds DashboardTargetConfirmedSensor: OK
+dashboard examples reference target_confirmed: OK
+dashboard_select_target still included: OK
+README updated: OK
+RELEASE_NOTES updated: OK
