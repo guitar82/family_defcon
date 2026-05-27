@@ -13,9 +13,9 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
 
 
 class DashboardTargetSelect(SelectEntity):
-    _attr_name = "Dashboard Target"
+    _attr_name = "Family DEFCON Dashboard Target"
     _attr_unique_id = "family_defcon_dashboard_target"
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:

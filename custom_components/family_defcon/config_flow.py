@@ -1,10 +1,11 @@
 """Config flow for Family DEFCON."""
 from __future__ import annotations
 
+from typing import Any
+
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import callback
 
 from .const import DOMAIN
 
@@ -14,12 +15,12 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial setup step."""
-        errors: dict[str, str] = {}
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
 
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             return self.async_create_entry(
@@ -30,7 +31,7 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        schema = vol.Schema(
+        data_schema = vol.Schema(
             {
                 vol.Optional("name", default="Family DEFCON"): str,
                 vol.Optional("config_file", default="family_defcon.yaml"): str,
@@ -39,39 +40,6 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
+            data_schema=data_schema,
             errors=errors,
-            description_placeholders={
-                "config_file": "family_defcon.yaml",
-            },
         )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        return FamilyDefconOptionsFlow(config_entry)
-
-
-class FamilyDefconOptionsFlow(config_entries.OptionsFlow):
-    """Handle Family DEFCON options."""
-
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-
-    async def async_step_init(self, user_input=None):
-        """Manage options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        current_config_file = self.config_entry.options.get(
-            "config_file",
-            self.config_entry.data.get("config_file", "family_defcon.yaml"),
-        )
-
-        schema = vol.Schema(
-            {
-                vol.Optional("config_file", default=current_config_file): str,
-            }
-        )
-
-        return self.async_show_form(step_id="init", data_schema=schema)

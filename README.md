@@ -280,3 +280,18 @@ This keeps the UI setup simple while allowing advanced multi person configuratio
 ### Why keep family_defcon.yaml?
 
 The config includes nested people, PINs, targets, stations, penalties, and AdGuard client mappings. Keeping that in YAML is easier to copy, back up, diff, and version while still letting the integration be installed from the UI.
+
+
+## v4.2 Stable dashboard entity IDs
+
+v4.2 forces the dashboard entities to use stable entity IDs:
+
+```text
+text.family_defcon_dashboard_pin
+select.family_defcon_dashboard_target
+button.family_defcon_dashboard_confirm_targeting
+button.family_defcon_dashboard_launch
+button.family_defcon_dashboard_cancel
+```
+
+If Home Assistant previously created `select.dashboard_target` or similar, delete the old entity from Settings → Devices & services → Entities after updating, then restart.

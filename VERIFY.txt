@@ -1,13 +1,6 @@
-Family DEFCON v4.0 UI Install Ready verification
+Family DEFCON v4.2 Stable Dashboard Entities verification
 Python compile: OK
-HACS structure: OK
-manifest config_flow: OK
-config_flow.py: included
-strings/translations: included
-async_setup_entry: included
-Dashboard keypad services: included
-Dashboard platforms: text/select/button included
-Config driven people sensor: included
-AdGuard endpoints: status + set_rules only
-Old AdGuard endpoints: not present
-Public package real family names: not present
+Stable dashboard entity names: OK
+Expected select entity: select.family_defcon_dashboard_target
+Expected text entity: text.family_defcon_dashboard_pin
+Expected button entities: OK

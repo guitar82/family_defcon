@@ -58,15 +58,11 @@ DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Family DEFCON from a UI config entry.
+    """Set up Family DEFCON from a UI config entry."""
+    config_file = entry.data.get("config_file", CONFIG_PATH)
 
-    The integration is UI installable, while the detailed family/game config remains in
-    /config/family_defcon.yaml or the file selected in options.
-    """
-    config_file = entry.options.get("config_file", entry.data.get("config_file", CONFIG_PATH))
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["config_path"] = config_file
-    hass.data[DOMAIN]["config_entry_id"] = entry.entry_id
 
     if hass.data[DOMAIN].get("setup_complete"):
         return True
@@ -79,8 +75,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Family DEFCON config entry."""
-    # The current YAML-backed implementation registers services and shared platform
-    # data globally. A restart is the safest unload path for now.
+    # Services and YAML backed shared state are registered globally.
+    # Restarting Home Assistant is the safest way to fully unload this integration.
     return True
 
 

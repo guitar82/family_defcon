@@ -17,7 +17,7 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
 
 
 class BaseDashboardButton(ButtonEntity):
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -38,7 +38,7 @@ class BaseDashboardButton(ButtonEntity):
 
 
 class DashboardConfirmButton(BaseDashboardButton):
-    _attr_name = "Dashboard Confirm Targeting"
+    _attr_name = "Family DEFCON Dashboard Confirm Targeting"
     _attr_unique_id = "family_defcon_dashboard_confirm_targeting"
     _attr_icon = "mdi:target"
 
@@ -48,7 +48,7 @@ class DashboardConfirmButton(BaseDashboardButton):
 
 
 class DashboardLaunchButton(BaseDashboardButton):
-    _attr_name = "Dashboard Launch"
+    _attr_name = "Family DEFCON Dashboard Launch"
     _attr_unique_id = "family_defcon_dashboard_launch"
     _attr_icon = "mdi:rocket-launch"
 
@@ -84,7 +84,7 @@ class DashboardLaunchButton(BaseDashboardButton):
 
 
 class DashboardCancelButton(BaseDashboardButton):
-    _attr_name = "Dashboard Cancel"
+    _attr_name = "Family DEFCON Dashboard Cancel"
     _attr_unique_id = "family_defcon_dashboard_cancel"
     _attr_icon = "mdi:cancel"
 
