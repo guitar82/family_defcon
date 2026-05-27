@@ -22,3 +22,16 @@ button.family_defcon_select_target_*
 ```
 
 Do not start with legacy examples unless you specifically want hard coded target names.
+
+
+Fallback dashboard without auto-entities:
+
+```text
+dashboard_launch_console_basic_no_auto_entities.yaml
+```
+
+Use this if you see:
+
+```text
+custom element doesn't exist: auto-entities
+```

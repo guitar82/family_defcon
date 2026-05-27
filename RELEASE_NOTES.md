@@ -1,5 +1,20 @@
 # Family DEFCON Release Notes
 
+## v5.8.14
+
+- Fixed cleanup service registration so `family_defcon.cleanup_target_button_entities` loads correctly.
+- Added startup cleanup of stale `button.select_target_*` entity registry entries.
+- Dynamic dashboard now includes both `button.family_defcon_select_target_*` and `button.select_target_*` filters.
+- Added `examples/dashboard_launch_console_basic_no_auto_entities.yaml` as a fallback dashboard.
+- Preserved v5.8.12 privacy fixes, hidden PIN state, instant PIN verification, dynamic target buttons, and native HA events.
+
+## v5.8.13
+
+- Added `family_defcon.cleanup_target_button_entities` service.
+- The service removes stale target button entity registry entries from old builds.
+- The cleanup can be run from Developer Tools > Actions without terminal scripts or tokens.
+- Preserved dynamic target buttons, hidden PIN state, instant PIN verification, native HA events, and v5.8.12 privacy fixes.
+
 ## v5.8.12
 
 - Fixed privacy issue where internal dashboard PIN could be saved to persistent storage.

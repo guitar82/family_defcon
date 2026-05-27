@@ -313,7 +313,7 @@ cards:
     filter:
       include:
         - entity_id: button.family_defcon_select_target_*
-          options:
+          options: &target_button_options
             type: custom:button-card
             entity: this.entity_id
             show_state: false
@@ -352,6 +352,8 @@ cards:
               name:
                 - font-size: 13px
                 - font-weight: 950
+        - entity_id: button.select_target_*
+          options: *target_button_options
       sort:
         method: name
 

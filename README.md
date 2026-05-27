@@ -427,3 +427,63 @@ hash_pin service description now matches the current fast SHA256 hash format
 ```
 
 After changing people names or dashboard target membership in the UI, restart Home Assistant.
+
+
+## v5.8.13 Cleanup Service
+
+v5.8.13 adds a built in cleanup service for old generated target button entity IDs.
+
+Run from Developer Tools → Actions:
+
+```yaml
+action: family_defcon.cleanup_target_button_entities
+data:
+  remove_old_select_target: true
+  remove_family_defcon_target_buttons: true
+```
+
+This removes stale registry entries such as:
+
+```text
+button.select_target_dad
+button.select_target_child_1
+button.family_defcon_select_target_child_1
+```
+
+Then restart Home Assistant so the current dynamic target buttons are recreated as:
+
+```text
+button.family_defcon_select_target_*
+```
+
+The service does not delete Family DEFCON configuration.
+
+
+## v5.8.14 Clean Install Fix
+
+v5.8.14 fixes cleanup action registration and makes install/upgrade behavior less fragile.
+
+Changes:
+
+```text
+cleanup_target_button_entities action registers correctly during setup
+Old button.select_target_* entries are cleaned automatically on startup
+Manual cleanup action is available from Developer Tools > Actions
+Dynamic dashboard matches both button.family_defcon_select_target_* and old button.select_target_* IDs
+Added a basic fallback dashboard that does not require auto-entities
+```
+
+Manual cleanup action:
+
+```yaml
+action: family_defcon.cleanup_target_button_entities
+data:
+  remove_old_select_target: true
+  remove_family_defcon_target_buttons: false
+```
+
+Use this fallback dashboard if auto-entities is not installed:
+
+```text
+examples/dashboard_launch_console_basic_no_auto_entities.yaml
+```

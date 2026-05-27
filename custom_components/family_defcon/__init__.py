@@ -64,6 +64,7 @@ DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
 HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
 AUTH_SOURCE_SCHEMA = vol.Schema({})
 CONFIG_AUDIT_SCHEMA = vol.Schema({})
+CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA = vol.Schema({vol.Optional("remove_old_select_target", default=True): cv.boolean, vol.Optional("remove_family_defcon_target_buttons", default=False): cv.boolean})
 
 
 
@@ -670,6 +671,44 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def update_entities() -> None:
         async_dispatcher_send(hass, SIGNAL_UPDATE)
+
+    async def cleanup_target_button_entity_registry(
+        *,
+        remove_old_select_target: bool = True,
+        remove_family_defcon_target_buttons: bool = False,
+    ) -> tuple[list[str], list[str]]:
+        """Remove stale generated target button entity registry entries."""
+        registry = er.async_get(hass)
+        removed: list[str] = []
+        failed: list[str] = []
+
+        for entry in list(registry.entities.values()):
+            entity_id = str(entry.entity_id)
+            platform = str(entry.platform)
+            unique_id = str(entry.unique_id)
+
+            should_remove = False
+
+            if remove_old_select_target and entity_id.startswith("button.select_target_"):
+                should_remove = True
+
+            if (
+                remove_family_defcon_target_buttons
+                and platform == DOMAIN
+                and unique_id.startswith("family_defcon_select_target_")
+            ):
+                should_remove = True
+
+            if not should_remove:
+                continue
+
+            try:
+                registry.async_remove(entity_id)
+                removed.append(entity_id)
+            except Exception as exc:
+                failed.append(f"{entity_id}: {exc}")
+
+        return removed, failed
 
     def fire_family_event(event_name: str, **data) -> None:
         """Expose Family DEFCON actions as Home Assistant events for automations."""
@@ -1463,6 +1502,63 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         await apply_launch(launcher, target, station)
 
+    async def handle_cleanup_target_button_entities(call: ServiceCall) -> None:
+        """Remove stale generated target button entity registry entries."""
+        remove_old_select_target = bool(call.data.get("remove_old_select_target", True))
+        remove_family_defcon_target_buttons = bool(call.data.get("remove_family_defcon_target_buttons", False))
+
+        removed, failed = await cleanup_target_button_entity_registry(
+            remove_old_select_target=remove_old_select_target,
+            remove_family_defcon_target_buttons=remove_family_defcon_target_buttons,
+        )
+
+        message = f"Target button entity cleanup complete. Removed {len(removed)} entities."
+        if remove_family_defcon_target_buttons:
+            message += " Restart Home Assistant so dynamic target buttons are recreated."
+        if failed:
+            message += f" Failed to remove {len(failed)} entities."
+
+        await log_event(message)
+        fire_family_event(
+            "target_button_cleanup",
+            removed_count=len(removed),
+            failed_count=len(failed),
+            removed=removed,
+            failed=failed,
+            message=message,
+        )
+
+        removed_lines = "\n".join(f"- {item}" for item in removed) if removed else "None"
+        failed_lines = "\n".join(f"- {item}" for item in failed) if failed else ""
+
+        notification = message + "\n\nRemoved:\n" + removed_lines
+        if failed_lines:
+            notification += "\n\nFailed:\n" + failed_lines
+        notification += "\n\nIf the target buttons do not appear, restart Home Assistant."
+
+        persistent_notification.async_create(
+            hass,
+            notification,
+            title="Family DEFCON target button cleanup",
+            notification_id="family_defcon_target_button_cleanup",
+        )
+
+        await update_entities()
+
+    # Family DEFCON automatic target button cleanup.
+    # Remove old button.select_target_* registry entries from earlier pre-release builds.
+    auto_removed, auto_failed = await cleanup_target_button_entity_registry(
+        remove_old_select_target=True,
+        remove_family_defcon_target_buttons=False,
+    )
+    if auto_removed or auto_failed:
+        _LOGGER.info(
+            "Family DEFCON automatic target button cleanup removed %s stale entities and failed %s.",
+            len(auto_removed),
+            len(auto_failed),
+        )
+
+    hass.services.async_register(DOMAIN, "cleanup_target_button_entities", handle_cleanup_target_button_entities, schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA)
     hass.services.async_register(DOMAIN, "launch", handle_launch, schema=LAUNCH_SCHEMA)
     hass.services.async_register(DOMAIN, "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "clear_all", handle_clear_all)

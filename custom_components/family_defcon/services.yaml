@@ -147,3 +147,22 @@ auth_config_status:
 config_audit_status:
   name: Config Audit Status
   description: Log a safe audit of active Family DEFCON config variables without exposing PIN values.
+
+cleanup_target_button_entities:
+  name: Cleanup target button entities
+  description: Remove stale generated Family DEFCON target button entity registry entries from earlier builds.
+  fields:
+    remove_old_select_target:
+      name: Remove old select_target entities
+      description: Remove old button.select_target_* entity IDs from earlier test builds.
+      required: false
+      default: true
+      selector:
+        boolean:
+    remove_family_defcon_target_buttons:
+      name: Remove current Family DEFCON target button entities
+      description: Also remove current generated Family DEFCON target button entities. Usually leave this off unless you want them recreated after restart.
+      required: false
+      default: false
+      selector:
+        boolean:
