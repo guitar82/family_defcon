@@ -1,0 +1,515 @@
+type: vertical-stack
+cards:
+  - type: custom:button-card
+    entity: sensor.family_defcon_level
+    name: FAMILY DEFCON
+    show_state: false
+    show_icon: false
+    tap_action:
+      action: none
+    triggers_update: all
+    styles:
+      card:
+        - padding: 22px
+        - border-radius: 24px
+        - border: 1px solid rgba(255,255,255,.16)
+        - box-shadow: 0 8px 24px rgba(0,0,0,.35)
+        - background: |
+            [[[
+              const level = Number(states['sensor.family_defcon_level']?.state || 5);
+              if (level <= 1) return 'radial-gradient(circle at top left, #ff5252 0%, #3b0000 48%, #090909 100%)';
+              if (level <= 2) return 'radial-gradient(circle at top left, #ff7043 0%, #7f0000 48%, #090909 100%)';
+              if (level === 3) return 'radial-gradient(circle at top left, #ffb74d 0%, #6d3300 48%, #090909 100%)';
+              if (level === 4) return 'radial-gradient(circle at top left, #fff176 0%, #6a5600 48%, #090909 100%)';
+              return 'radial-gradient(circle at top left, #69f0ae 0%, #0b4d22 48%, #090909 100%)';
+            ]]]
+        - color: white
+    custom_fields:
+      main: |
+        [[[
+          const level = Number(states['sensor.family_defcon_level']?.state || 5);
+          const peace = states['sensor.family_defcon_peace_status']?.state || 'Unknown';
+          const event = states['sensor.family_defcon_last_event']?.state || 'System initialized.';
+          const armed = states['switch.family_defcon_command_system_armed']?.state === 'on';
+
+          let icon = '🟢';
+          let label = 'PEACEFUL STATUS';
+          let accent = '#69f0ae';
+
+          if (level <= 1) { icon = '☢️'; label = 'MUTUAL WIFI DESTRUCTION'; accent = '#ff8a80'; }
+          else if (level <= 2) { icon = '🚨'; label = 'RED ALERT'; accent = '#ffab91'; }
+          else if (level === 3) { icon = '⚠️'; label = 'ESCALATION'; accent = '#ffd180'; }
+          else if (level === 4) { icon = '🟡'; label = 'WATCH CONDITION'; accent = '#fff59d'; }
+
+          return `
+            <div style="display:grid; grid-template-columns: 86px 1fr; gap:18px; align-items:center;">
+              <div style="font-size:62px; text-align:center;">${icon}</div>
+              <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                  <div style="font-size:40px; font-weight:950; letter-spacing:2px;">DEFCON ${level}</div>
+                  <div style="font-size:12px; font-weight:900; padding:6px 10px; border-radius:999px; background:${armed ? 'rgba(105,240,174,.16)' : 'rgba(255,255,255,.12)'}; color:${armed ? '#69f0ae' : '#cfd8dc'};">
+                    ${armed ? 'ARMED' : 'DISARMED'}
+                  </div>
+                </div>
+                <div style="font-size:18px; font-weight:900; color:${accent}; letter-spacing:1px;">${label}</div>
+                <div style="font-size:13px; margin-top:10px; opacity:.9;">Peace Status: <b>${peace}</b></div>
+                <div style="font-size:13px; margin-top:6px; opacity:.82;">${event}</div>
+              </div>
+            </div>
+          `;
+        ]]]
+
+  - type: grid
+    columns: 4
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: sensor.family_defcon_level
+        name: DEFCON
+        icon: mdi:gauge
+        show_state: true
+        styles: &stat_style
+          card:
+            - border-radius: 18px
+            - padding: 14px
+            - background: "#101820"
+            - color: white
+            - border: 1px solid rgba(255,255,255,.10)
+          icon:
+            - color: "#42a5f5"
+          state:
+            - font-size: 24px
+            - font-weight: 950
+          name:
+            - font-size: 12px
+            - color: "#b0bec5"
+            - font-weight: 800
+
+      - type: custom:button-card
+        entity: switch.family_defcon_command_system_armed
+        name: ARMED
+        icon: mdi:shield-lock
+        show_state: true
+        tap_action:
+          action: toggle
+        styles:
+          <<: *stat_style
+          icon:
+            - color: |
+                [[[
+                  return entity.state === 'on' ? '#69f0ae' : '#b0bec5';
+                ]]]
+          state:
+            - font-size: 24px
+            - font-weight: 950
+            - color: |
+                [[[
+                  return entity.state === 'on' ? '#69f0ae' : '#b0bec5';
+                ]]]
+
+      - type: custom:button-card
+        entity: sensor.family_defcon_daily_launches
+        name: LAUNCHES
+        icon: mdi:target
+        show_state: true
+        styles:
+          <<: *stat_style
+          icon:
+            - color: "#ffca28"
+
+      - type: custom:button-card
+        entity: sensor.family_defcon_conflict_chain
+        name: CHAIN
+        icon: mdi:link-variant
+        show_state: true
+        styles:
+          <<: *stat_style
+          icon:
+            - color: "#ef5350"
+
+  - type: custom:button-card
+    name: LAUNCH COMMAND INTERFACE
+    icon: mdi:rocket-launch
+    show_icon: true
+    show_name: true
+    tap_action:
+      action: none
+    styles:
+      card:
+        - border-radius: 20px
+        - padding: 16px
+        - background: "#0b1117"
+        - color: white
+        - border: 1px solid rgba(41,182,246,.38)
+      name:
+        - justify-self: start
+        - color: "#29b6f6"
+        - font-size: 18px
+        - font-weight: 950
+        - letter-spacing: 1px
+      icon:
+        - color: "#29b6f6"
+        - width: 28px
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: text.family_defcon_dashboard_pin
+        name: PIN ENTRY
+        show_icon: false
+        show_state: false
+        triggers_update: all
+        tap_action:
+          action: none
+        styles:
+          card:
+            - height: 86px
+            - border-radius: 18px
+            - background: "#101820"
+            - color: white
+            - border: 1px solid rgba(255,255,255,.12)
+          name:
+            - font-size: 12px
+            - color: "#b0bec5"
+            - font-weight: 900
+            - letter-spacing: 1px
+        custom_fields:
+          pin: |
+            [[[
+              const pin = states['text.family_defcon_dashboard_pin']?.state || '';
+              const masked = pin.length ? '●'.repeat(pin.length) : 'ENTER PIN';
+              return `<div style="font-size:28px; font-weight:950; letter-spacing:5px; color:#ffffff;">${masked}</div>`;
+            ]]]
+
+      - type: entities
+        title: Target
+        show_header_toggle: false
+        entities:
+          - entity: select.family_defcon_dashboard_target
+            name: Select Target
+
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - &keypad_button
+        type: custom:button-card
+        name: "1"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "1"
+        styles: &keypad_style
+          card:
+            - height: 58px
+            - border-radius: 16px
+            - background: "#101820"
+            - color: white
+            - font-weight: 950
+            - border: 1px solid rgba(255,255,255,.12)
+          name:
+            - font-size: 23px
+            - font-weight: 950
+      - <<: *keypad_button
+        name: "2"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "2"
+      - <<: *keypad_button
+        name: "3"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "3"
+      - <<: *keypad_button
+        name: "4"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "4"
+      - <<: *keypad_button
+        name: "5"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "5"
+      - <<: *keypad_button
+        name: "6"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "6"
+      - <<: *keypad_button
+        name: "7"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "7"
+      - <<: *keypad_button
+        name: "8"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "8"
+      - <<: *keypad_button
+        name: "9"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "9"
+      - type: custom:button-card
+        name: CLEAR
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_clear_pin
+        styles:
+          <<: *keypad_style
+          card:
+            - height: 58px
+            - border-radius: 16px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+      - <<: *keypad_button
+        name: "0"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "0"
+      - type: custom:button-card
+        name: BACK
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_backspace
+        styles:
+          <<: *keypad_style
+          card:
+            - height: 58px
+            - border-radius: 16px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: button.family_defcon_dashboard_confirm_targeting
+        name: CONFIRM
+        icon: mdi:target
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_dashboard_confirm_targeting
+        styles:
+          card:
+            - height: 74px
+            - border-radius: 18px
+            - background: "#fdd835"
+            - color: "#111"
+            - font-weight: 950
+          icon:
+            - color: "#111"
+            - width: 30px
+          name:
+            - font-size: 16px
+            - letter-spacing: 1px
+
+      - type: custom:button-card
+        entity: button.family_defcon_dashboard_launch
+        name: LAUNCH
+        icon: mdi:rocket-launch
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_dashboard_launch
+        styles:
+          card:
+            - height: 74px
+            - border-radius: 18px
+            - background: "linear-gradient(135deg, #b71c1c, #f44336)"
+            - color: white
+            - font-weight: 950
+            - letter-spacing: 1px
+            - box-shadow: 0 4px 14px rgba(244,67,54,.35)
+          icon:
+            - width: 30px
+          name:
+            - font-size: 16px
+
+      - type: custom:button-card
+        entity: button.family_defcon_dashboard_cancel
+        name: CANCEL
+        icon: mdi:cancel
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.family_defcon_dashboard_cancel
+        styles:
+          card:
+            - height: 74px
+            - border-radius: 18px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+            - letter-spacing: 1px
+          icon:
+            - width: 30px
+            - color: "#cfd8dc"
+          name:
+            - font-size: 16px
+
+  - type: custom:button-card
+    name: CURRENT WIFI STATUS
+    icon: mdi:wifi
+    show_icon: true
+    show_name: true
+    tap_action:
+      action: none
+    styles:
+      card:
+        - border-radius: 20px
+        - padding: 16px
+        - background: "#0b1117"
+        - color: white
+        - border: 1px solid rgba(41,182,246,.38)
+      name:
+        - justify-self: start
+        - color: "#29b6f6"
+        - font-size: 18px
+        - font-weight: 950
+        - letter-spacing: 1px
+      icon:
+        - color: "#29b6f6"
+        - width: 28px
+
+  - type: custom:button-card
+    entity: sensor.family_defcon_dashboard_people
+    show_icon: false
+    show_name: false
+    tap_action:
+      action: none
+    triggers_update: all
+    styles:
+      card:
+        - border-radius: 20px
+        - padding: 14px
+        - background: "#0b1117"
+        - color: white
+        - border: 1px solid rgba(255,255,255,.12)
+    custom_fields:
+      people: |
+        [[[
+          const sensor = states['sensor.family_defcon_dashboard_people'];
+          const people = sensor?.attributes?.people || [];
+
+          if (!people.length) {
+            return `<div style="padding:12px; color:#ffca28;">No people configured.</div>`;
+          }
+
+          return people.map((p) => {
+            const status = states[p.status_entity]?.state || 'unknown';
+            const mins = states[p.minutes_entity]?.state || '0';
+            const blocked = status === 'blocked';
+            const color = blocked ? '#ef5350' : '#66bb6a';
+            const icon = blocked ? '🚫' : '✅';
+            const label = blocked ? `PAUSED — ${mins} min` : 'ONLINE';
+
+            let role = 'TARGET';
+            if (p.is_parent_target) role = 'PARENT';
+            if (p.is_default_target) role = 'CHILD';
+
+            return `
+              <div style="display:grid; grid-template-columns:42px 1fr 132px; gap:10px; align-items:center; padding:10px 8px; border-bottom:1px solid rgba(255,255,255,.08);">
+                <div style="font-size:24px;">${icon}</div>
+                <div>
+                  <div style="font-size:16px; font-weight:900;">${p.name}</div>
+                  <div style="font-size:11px; opacity:.55; letter-spacing:1px;">${role}</div>
+                </div>
+                <div style="font-size:14px; font-weight:950; color:${color}; text-align:right;">${label}</div>
+              </div>
+            `;
+          }).join('');
+        ]]]
+
+  - type: grid
+    title: Parent Controls
+    columns: 4
+    square: false
+    cards:
+      - type: custom:button-card
+        name: ARM
+        icon: mdi:shield-lock
+        tap_action:
+          action: call-service
+          service: family_defcon.set_armed
+          data:
+            enabled: true
+        styles:
+          card:
+            - border-radius: 16px
+            - background: "#103d1b"
+            - color: "#66ff66"
+            - height: 76px
+            - font-weight: 950
+
+      - type: custom:button-card
+        name: DISARM
+        icon: mdi:shield-off
+        tap_action:
+          action: call-service
+          service: family_defcon.set_armed
+          data:
+            enabled: false
+        styles:
+          card:
+            - border-radius: 16px
+            - background: "#263238"
+            - color: white
+            - height: 76px
+            - font-weight: 950
+
+      - type: custom:button-card
+        name: CLEAR ALL
+        icon: mdi:restart
+        tap_action:
+          action: call-service
+          service: family_defcon.clear_all
+        styles:
+          card:
+            - border-radius: 16px
+            - background: "#263238"
+            - color: white
+            - height: 76px
+            - font-weight: 950
+
+      - type: custom:button-card
+        name: ENFORCE
+        icon: mdi:shield-sync
+        tap_action:
+          action: call-service
+          service: family_defcon.enforce_now
+        styles:
+          card:
+            - border-radius: 16px
+            - background: "#263238"
+            - color: white
+            - height: 76px
+            - font-weight: 950

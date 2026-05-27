@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Family DEFCON",
+        "description": "Set up Family DEFCON. The large family/game configuration stays in /config/{config_file}.",
+        "data": {
+          "name": "Name",
+          "config_file": "Config file"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Family DEFCON is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Family DEFCON Options",
+        "description": "Change the YAML config file name used by Family DEFCON.",
+        "data": {
+          "config_file": "Config file"
+        }
+      }
+    }
+  }
+}
