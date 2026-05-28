@@ -16,6 +16,8 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         LastTargetSensor(hass),
         LastEventSensor(hass),
         DashboardPeopleSensor(hass),
+        ParentAdminConfirmedBySensor(hass),
+        ParentAdminStatusSensor(hass),
         AdGuardStatusSensor(hass),
         AdGuardLastSyncSensor(hass),
         AdGuardLastErrorSensor(hass),
@@ -206,3 +208,49 @@ class PersonMinutesRemainingSensor(Base):
         if self._mutual_blocks_person(): return 999
         until = self.s["blocked_until"].get(self.person)
         return max(int((until - datetime.now()).total_seconds() / 60), 0) if isinstance(until, datetime) else 0
+
+
+
+
+
+
+
+
+class ParentAdminConfirmedBySensor(Base):
+    """Name of the parent who confirmed admin controls."""
+
+    _attr_name = "parent_admin_confirmed_by"
+    _attr_unique_id = "family_defcon_parent_admin_confirmed_by"
+    _attr_suggested_object_id = "parent_admin_confirmed_by"
+    _attr_icon = "mdi:account-shield"
+
+    @property
+    def native_value(self) -> str:
+        expires = self.s.get("parent_admin_confirm_expires")
+        if bool(self.s.get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+            return str(self.s.get("parent_admin_confirmed_by", "") or "Unknown")
+        return "None"
+
+
+class ParentAdminStatusSensor(Base):
+    """Parent admin confirmation status."""
+
+    _attr_name = "parent_admin_status"
+    _attr_unique_id = "family_defcon_parent_admin_status"
+    _attr_suggested_object_id = "parent_admin_status"
+    _attr_icon = "mdi:shield-account"
+
+    @property
+    def native_value(self) -> str:
+        expires = self.s.get("parent_admin_confirm_expires")
+        if bool(self.s.get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+            return "confirmed"
+        return "not_confirmed"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        expires = self.s.get("parent_admin_confirm_expires")
+        return {
+            "confirmed_by": self.s.get("parent_admin_confirmed_by", ""),
+            "expires": expires.isoformat() if isinstance(expires, datetime) else None,
+        }

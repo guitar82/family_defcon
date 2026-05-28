@@ -724,3 +724,151 @@ Enter parent PIN
 Press VERIFY PARENT PIN
 Use parent controls within 60 seconds
 ```
+
+
+## v5.8.24 Parent Launcher Style Rebuild
+
+v5.8.24 rebuilds the parent terminal to mirror the working launcher flow.
+
+Flow:
+
+```text
+Enter PIN with existing dashboard keypad
+Press CONFIRM
+binary_sensor.parent_admin_confirmed turns on
+Use parent controls for the configured PIN timeout window
+Press CANCEL to clear confirmation
+```
+
+New parent confirmation entities:
+
+```text
+button.parent_admin_confirm
+button.parent_admin_cancel
+binary_sensor.parent_admin_confirmed
+sensor.parent_admin_confirmed_by
+sensor.parent_admin_status
+```
+
+The parent terminal no longer uses the separate parent keypad system or the old verify button flow.
+
+
+## v5.8.25 Parent Import Fix
+
+v5.8.25 fixes the parent launcher-style rebuild so Home Assistant can actually load the new parent status entities.
+
+Fixes:
+
+```text
+ParentAdminConfirmedBinarySensor now extends BinarySensorEntity directly
+binary_sensor.py imports datetime
+ParentAdminConfirmedBinarySensor is added to async_setup_platform
+ParentAdminConfirmedBySensor and ParentAdminStatusSensor now extend existing Base
+Parent admin sensors are added to sensor async_setup_platform
+Dashboard keeps launcher-style flow: PIN -> CONFIRM -> admin buttons
+```
+
+
+## v5.8.26 Examples Archived
+
+v5.8.26 archives older dashboard examples that referenced stale parent keypad, verify, or entity naming flows.
+
+Use the current parent dashboard:
+
+```text
+examples/dashboard_parent_interface_launcher_style.yaml
+```
+
+Compatibility copies are also kept visible:
+
+```text
+examples/dashboard_parent_interface.yaml
+examples/dashboard_parent_interface_working.yaml
+```
+
+Older examples are moved to:
+
+```text
+examples/_archive_old_examples/
+```
+
+
+## v5.8.27 Parent Terminal Fixed
+
+This rebuild fixes the parent terminal by using the launcher pattern exactly.
+
+Expected entity IDs:
+
+```text
+button.parent_admin_confirm
+button.parent_admin_cancel
+button.parent_admin_arm
+button.parent_admin_disarm
+button.parent_admin_clear_all
+button.parent_admin_enforce_now
+button.parent_admin_cleanup_targets
+binary_sensor.parent_admin_confirmed
+sensor.parent_admin_confirmed_by
+sensor.parent_admin_status
+```
+
+Flow:
+
+```text
+Enter PIN with existing dashboard keypad
+Press CONFIRM
+binary_sensor.parent_admin_confirmed turns on
+Use parent admin buttons
+```
+
+
+## v5.8.28 Parent Confirm Direct Service
+
+This build makes the parent CONFIRM button call the integration service directly:
+
+```text
+family_defcon.parent_admin_confirm
+```
+
+This bypasses the Home Assistant button entity layer for confirm/cancel, while keeping the parent action buttons as normal button entities.
+
+Flow:
+
+```text
+Enter PIN
+Press CONFIRM
+Dashboard calls family_defcon.parent_admin_confirm directly
+Parent session is set
+Use parent admin buttons
+```
+
+
+## v5.8.29 Confirm Registration Fix
+
+v5.8.29 fixes the missing `family_defcon.parent_admin_confirm` action.
+
+Fixes:
+
+```text
+Registers parent_admin_confirm beside the existing working dashboard keypad services
+Registers parent_admin_cancel beside the existing working dashboard keypad services
+CONFIRM dashboard button calls family_defcon.parent_admin_confirm directly
+CANCEL dashboard button calls family_defcon.parent_admin_cancel directly
+Scans registered parent services against services.yaml
+Scans dashboard examples for stale parent verify/keypad references
+```
+
+
+## v5.8.30 Confirm Reload Safe
+
+v5.8.30 fixes the case where Home Assistant reloads the config entry while
+`hass.data[DOMAIN]["setup_complete"]` is already true. In that case the full
+`async_setup` service registration block can be skipped, causing new actions like
+`family_defcon.parent_admin_confirm` and `family_defcon.parent_admin_cancel` to be missing.
+
+This build registers those two actions from a module-level fallback during both:
+
+```text
+async_setup_entry reload path
+full async_setup path
+```

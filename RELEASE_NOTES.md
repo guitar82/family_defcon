@@ -1,5 +1,54 @@
 # Family DEFCON Release Notes
 
+## v5.8.30
+
+- Added reload-safe registration for `parent_admin_confirm` and `parent_admin_cancel`.
+- Fixes the Home Assistant `setup_complete` reload path where new services could be skipped.
+- CONFIRM still calls `family_defcon.parent_admin_confirm` directly.
+
+## v5.8.29
+
+- Fixed missing `family_defcon.parent_admin_confirm` registration.
+- Fixed missing `family_defcon.parent_admin_cancel` registration.
+- Parent confirm/cancel services are now registered beside the working dashboard keypad services.
+- Added validation for service registration, services.yaml, button classes, and dashboard references.
+
+## v5.8.28
+
+- Parent CONFIRM now calls `family_defcon.parent_admin_confirm` directly from the dashboard.
+- Parent CANCEL calls `family_defcon.parent_admin_cancel` directly.
+- Dashboard no longer depends on parent confirm status entities to show success.
+- This bypasses the fragile `button.press -> custom service` path for confirm/cancel.
+
+## v5.8.27
+
+- Final parent terminal fix using launcher-style confirm flow.
+- Deterministic parent button and sensor entity IDs.
+- No old verify button or parent keypad services in current examples.
+
+## v5.8.26
+
+- Archived old dashboard examples into `examples/_archive_old_examples/`.
+- Kept only current working examples visible in the main examples folder.
+- Made `dashboard_parent_interface.yaml`, `dashboard_parent_interface_working.yaml`, and `dashboard_parent_interface_launcher_style.yaml` identical to prevent stale parent dashboard confusion.
+- Added README files explaining which examples to use.
+
+## v5.8.25
+
+- Fixed parent admin confirmed binary sensor import/load issue.
+- Fixed parent admin status sensor base class and registration.
+- Parent launcher-style dashboard remains the recommended dashboard.
+- This build specifically fixes HA import/runtime issues that py_compile alone would not catch.
+
+## v5.8.24
+
+- Rebuilt parent terminal to mirror launcher structure.
+- Added `parent_admin_confirm` and `parent_admin_cancel` buttons.
+- Added `binary_sensor.parent_admin_confirmed`, `sensor.parent_admin_confirmed_by`, and `sensor.parent_admin_status`.
+- Parent admin actions now require an active parent confirmation session instead of trying to verify PIN directly every time.
+- Parent dashboard uses existing dashboard keypad only.
+- Removed old parent verify button flow from examples.
+
 ## v5.8.23
 
 - Final audit pass for parent verify and parent dashboard.

@@ -206,6 +206,11 @@ parent_admin_clear_pin:
   name: Parent Admin Clear PIN
   description: Clear the hidden parent admin PIN.
 
-parent_admin_verify:
-  name: Parent Admin Verify
-  description: Verify the existing dashboard PIN as a parent admin PIN for 60 seconds.
+
+parent_admin_confirm:
+  name: Parent Admin Confirm
+  description: Confirm the existing dashboard PIN as a parent admin session.
+
+parent_admin_cancel:
+  name: Parent Admin Cancel
+  description: Cancel the active parent admin confirmation session and clear PIN.
