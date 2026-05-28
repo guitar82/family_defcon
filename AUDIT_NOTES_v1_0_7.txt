@@ -1,0 +1,33 @@
+Family DEFCON v1.0.7 audit notes
+
+Reviewed:
+- manifest/config flow structure
+- services.yaml vs registered services
+- parent confirm/cancel service registration
+- AdGuard UI mapping into dns.adguard_home
+- AdGuard credentials lookup behavior
+- status/dashboard people attributes
+- per person status sensors
+- DEFCON level active block calculation
+- reload_config/setup_complete behavior
+- stale logger/version strings
+
+Important status changes:
+- sensor.family_defcon_dashboard_people attributes now include:
+  - people[].status
+  - people[].blocked
+  - people[].minutes_remaining
+  - active_block_count
+  - blocked_until_keys
+- sensor.family_defcon_<person>_wifi_status attributes now include:
+  - blocked
+  - minutes_remaining
+  - status
+  - blocked_until_keys
+
+Recommended quick test:
+1. Restart HA Core.
+2. Run family_defcon.block_person with person Henry.
+3. Check sensor.family_defcon_henry_wifi_status = blocked.
+4. Check sensor.family_defcon_dashboard_people attributes active_block_count > 0.
+5. Run family_defcon.unblock_person with person Henry.

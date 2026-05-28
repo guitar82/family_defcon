@@ -1,0 +1,21 @@
+GitHub/HACS update instructions
+
+This repo must have custom_components/family_defcon at the repository root.
+
+Commit and push these files:
+
+custom_components/family_defcon/__init__.py
+custom_components/family_defcon/button.py
+custom_components/family_defcon/services.yaml
+custom_components/family_defcon/manifest.json
+examples/dashboard_parent_interface.yaml
+
+Then in Home Assistant:
+
+1. HACS > Integrations > Family DEFCON > Redownload or Update
+2. Restart Home Assistant Core
+3. Check Developer Tools > Actions for:
+   family_defcon.parent_admin_confirm
+   family_defcon.parent_admin_cancel
+
+If the version still shows an old version, HACS did not pull the new GitHub commit.

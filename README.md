@@ -872,3 +872,260 @@ This build registers those two actions from a module-level fallback during both:
 async_setup_entry reload path
 full async_setup path
 ```
+
+
+## v5.8.31 Confirm Hard Fix
+
+v5.8.31 rebuilds parent confirm registration in the same async_setup service block as the working dashboard keypad services.
+
+It also changes async_setup_entry so an existing setup_complete flag does not skip the new service registration after an update.
+
+Use the included installer script from HA Terminal to avoid extracting the zip into the wrong folder:
+
+```bash
+bash /config/INSTALL_FROM_HA_TERMINAL.sh
+ha core restart
+```
+
+
+## v5.8.32 GitHub Confirm Fix
+
+This build is intended for GitHub/HACS loading.
+
+The parent confirm/cancel actions are registered directly in the same async_setup service registration block as the working dashboard keypad services:
+
+```text
+family_defcon.parent_admin_confirm
+family_defcon.parent_admin_cancel
+```
+
+The config-entry setup path no longer returns early when `setup_complete` is already true. This allows updated GitHub code to register newly added services after a HACS update and HA restart.
+
+
+## v1.0.0 Stable
+
+This is the first stable release of Family DEFCON.
+
+Stable baseline:
+
+```text
+Launcher dashboard works
+Parent command interface works
+Parent CONFIRM action works
+Parent admin buttons work
+Dynamic target buttons work
+Existing dashboard keypad is used for launcher and parent PIN entry
+Old parent verify flow removed
+Old parent_admin_keypress dashboard dependency removed
+Parent dashboard uses family_defcon.parent_admin_confirm directly
+```
+
+Recommended parent dashboard:
+
+```text
+examples/dashboard_parent_interface.yaml
+```
+
+Recommended launcher dashboard:
+
+```text
+examples/dashboard_launch_console_dynamic_targets.yaml
+```
+
+
+## v1.0.0 Stable Examples
+
+The examples folder is intentionally limited to four files:
+
+```text
+dashboard_parent_interface.yaml
+dashboard_launch_console_dynamic_targets.yaml
+dashboard_status_overview.yaml
+automation_event_announcements.yaml
+```
+
+
+## v1.0.1 UI AdGuard Fix
+
+Fixes UI-only AdGuard configuration not reaching the active runtime enforcement config.
+
+What changed:
+
+```text
+AdGuard base URL is forced from UI options before every enforcement run
+AdGuard provider is set to adguard_home when AdGuard URL is configured
+AdGuard enabled/mode are refreshed from UI options
+AdGuard client names are refreshed from UI options
+Added family_defcon.adguard_config_status action
+```
+
+To test:
+
+```yaml
+action: family_defcon.adguard_config_status
+```
+
+Then check:
+
+```text
+sensor.family_defcon_last_event
+```
+
+
+## v1.0.2 AdGuard Diagnostics
+
+Adds a backup diagnostic action that creates a Home Assistant persistent notification:
+
+```yaml
+action: family_defcon.debug_status
+```
+
+This is useful if `sensor.family_defcon_last_event` is blank or not updating.
+
+
+## v1.0.3 UI AdGuard Mapping Fix
+
+Fixes UI AdGuard settings by mapping them into the exact same runtime structure as the working advanced YAML `dns:` block.
+
+If `adguard_base_url` is set in the UI, the integration now builds:
+
+```yaml
+dns:
+  enabled: true
+  provider: adguard_home
+  enforcement_mode: active
+  adguard_home:
+    base_url: ...
+    username_secret: ...
+    password_secret: ...
+    rule_prefix: ...
+    clients:
+      Person:
+        client_name: ...
+        enabled: true
+```
+
+Test after restart:
+
+```yaml
+action: family_defcon.adguard_config_status
+```
+
+Then check `sensor.family_defcon_last_event` or Notifications.
+
+
+## v1.0.4 Dashboard Status Fix
+
+Fixes the status overview dashboard showing users online when they are blocked.
+
+The backend `sensor.family_defcon_dashboard_people` now includes direct snapshot values for each person:
+
+```text
+status
+blocked
+minutes_remaining
+```
+
+The dashboard no longer has to guess or look up per-person status entity IDs.
+
+
+## v1.0.5 Case Safe Status Fix
+
+Fixes the dashboard showing users online when a timeout exists under a differently cased name.
+
+Example fixed:
+
+```text
+Last event: Dad launched at Henry
+Dashboard people list: henry
+blocked_until key: Henry
+```
+
+The dashboard people sensor now matches blocked status case-insensitively.
+
+
+## v1.0.6 Status State Fix
+
+Fixes remaining status issues where launch/enforcement works but dashboard people still show online.
+
+Changes:
+
+```text
+Restores saved blocked_until values case-insensitively
+Preserves active timeouts during reload_config even when name case changed
+Canonicalizes launcher and target names during launch
+Writes timeouts using configured person names
+Person WiFi Status and Minutes Remaining sensors now use case-insensitive blocked_until lookup
+Dashboard People still exposes direct blocked/status/minutes_remaining attributes
+```
+
+
+## v1.0.7 Audit Patch
+
+This audit patch hardens the current release candidate after reviewing the service registration, status sensors, reload behavior, AdGuard UI mapping, and diagnostics.
+
+Fixes included:
+
+```text
+All status sensors now share the same case safe blocked/allowed calculation
+DEFCON level now uses the same case safe status calculation as the people dashboard
+Dashboard People attributes include active_block_count and blocked_until_keys for debugging
+Per person status sensors expose blocked/minutes/status attributes
+Config entry reload no longer reruns full platform setup when already loaded
+AdGuard username/password secret fields can also work as literal values if no matching secret exists
+Fixed a LOGGER typo in debug notification error handling
+Updated stale debug version text
+```
+
+
+## v1.0.8 AdGuard Connection Fix
+
+Focused patch for UI to AdGuard connection handling.
+
+Fixes and hardening:
+
+```text
+Normalizes AdGuard URL from UI or YAML
+Accepts IP/host without http:// by assuming http://
+Strips accidental /control path from the base URL
+Allows UI credential fields to work as secrets or literal values
+Adds family_defcon.adguard_connection_test action
+Improves AdGuard error messages with sanitized endpoint and HTTP status
+```
+
+Test after restart:
+
+```yaml
+action: family_defcon.adguard_config_status
+```
+
+Then:
+
+```yaml
+action: family_defcon.adguard_connection_test
+```
+
+
+## v1.0.9 Loader Config Fix
+
+Fixes new actions not appearing after HACS/GitHub updates and UI config changes not applying.
+
+Changes:
+
+```text
+async_setup_entry always runs async_setup after config entry load
+Service registration is idempotent and replaces old in-memory services
+Periodic timer is replaced instead of duplicated
+Entity platforms are loaded only once
+Option saves re-run setup so services and UI config mapping refresh
+Live blocked_until state is preserved during in-process setup reruns
+```
+
+This directly addresses actions such as:
+
+```text
+family_defcon.adguard_connection_test
+family_defcon.adguard_config_status
+```
+
+not appearing after an update.

@@ -1,5 +1,97 @@
 # Family DEFCON Release Notes
 
+## v1.0.9 Loader Config Fix
+
+- Fixed config-entry early return that could skip newly added service registrations after HACS/GitHub updates.
+- Service registration is now idempotent and replaces old in-memory services.
+- Platforms are loaded only once to avoid duplicate entities.
+- Periodic timer is replaced on setup rerun.
+- UI option updates re-run setup so AdGuard config mapping and actions refresh.
+
+## v1.0.8 AdGuard Connection Fix
+
+- Normalized AdGuard base URL from UI/YAML before API calls.
+- Added support for literal or secret-based AdGuard credentials.
+- Added `family_defcon.adguard_connection_test` action.
+- Improved AdGuard GET/POST diagnostics with sanitized endpoint and HTTP response details.
+
+## v1.0.7 Audit Patch
+
+- Consolidated status logic across DEFCON level, dashboard people, and per person status sensors.
+- Added status debug attributes: `active_block_count`, `blocked_until_keys`, `blocked`, `minutes_remaining`, and `status`.
+- Avoided duplicate platform/timer setup on config entry reload when already loaded.
+- Allowed AdGuard username/password UI secret fields to fall back to literal values when a matching secret is not found.
+- Fixed debug notification logger typo.
+
+## v1.0.6 Status State Fix
+
+- Restores saved `blocked_until` values case-insensitively.
+- Preserves active timeouts during config reload with case-safe matching.
+- Canonicalizes launcher and target names during launch.
+- Writes timeouts using configured person names.
+- Per-person WiFi status/minutes sensors now use case-insensitive timeout lookup.
+
+## v1.0.5 Case Safe Status Fix
+
+- Fixed dashboard status lookup when person names differ by case.
+- `sensor.family_defcon_dashboard_people` now checks `blocked_until` case-insensitively.
+- Parent/default target role checks are now case-insensitive.
+- Removed missing AdGuard diagnostic entity rows from the status dashboard example.
+
+## v1.0.4 Dashboard Status Fix
+
+- Added direct per-person status snapshot attributes to `sensor.family_defcon_dashboard_people`.
+- Status dashboard now reads `p.blocked`, `p.status`, and `p.minutes_remaining` directly.
+- Fixes dashboard showing ONLINE when the person is actually blocked.
+
+## v1.0.3 UI AdGuard Mapping Fix
+
+- Replaced partial UI AdGuard refresh with deterministic UI-to-runtime mapping.
+- UI AdGuard config now builds the exact same `dns.adguard_home` structure as the working advanced YAML config.
+- UI AdGuard URL wins over blank/default runtime config.
+- `family_defcon.adguard_config_status` reports both UI and runtime URL status.
+
+## v1.0.2 AdGuard Diagnostics
+
+- Added `family_defcon.debug_status`.
+- `debug_status` creates a persistent notification with UI/runtime AdGuard status.
+- `adguard_config_status` now also creates a persistent notification.
+
+## v1.0.1 UI AdGuard Fix
+
+- Fixed UI-only AdGuard settings not being applied to active runtime enforcement config.
+- Forces AdGuard URL, enabled state, enforcement mode, rule prefix, and client names from UI config before enforcement.
+- Added `family_defcon.adguard_config_status` action.
+
+## v1.0.0 Stable Clean Examples
+
+- Removed old and duplicate examples.
+- Kept only three dashboard examples and the automation announcement sample.
+
+## v1.0.0 Stable
+
+- Promoted the working v5.8.32 build to v1.0.0 stable.
+- Launcher flow confirmed working.
+- Parent command interface confirmed working.
+- Parent confirm action confirmed working.
+- Parent admin buttons confirmed working.
+- Dynamic target buttons confirmed working.
+- Old parent verify/keypad flows removed from current dashboards.
+
+## v5.8.32
+
+- GitHub/HACS-focused parent confirm fix.
+- Registers `family_defcon.parent_admin_confirm` and `family_defcon.parent_admin_cancel` in the main async_setup block.
+- Prevents setup_complete early return from skipping new service registrations after update.
+- Parent dashboard CONFIRM calls `family_defcon.parent_admin_confirm` directly.
+
+## v5.8.31
+
+- Hard fix for missing `family_defcon.parent_admin_confirm` and `family_defcon.parent_admin_cancel` actions.
+- Registers parent confirm/cancel in the same service registration block as the working dashboard keypad services.
+- Forces async_setup_entry updates to rerun async_setup instead of returning early from setup_complete.
+- Adds HA terminal installer script to prevent wrong folder extraction.
+
 ## v5.8.30
 
 - Added reload-safe registration for `parent_admin_confirm` and `parent_admin_cancel`.

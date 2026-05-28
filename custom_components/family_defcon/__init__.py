@@ -1,12 +1,9 @@
-"""Family DEFCON custom integration.
-
-v1.4 keeps variable data in family_defcon.yaml, uses async-safe file loading, and manages AdGuard custom rules safely:
-people, targets, PINs, stations, AdGuard URL, client names, penalties, timers, and DNS behavior.
-"""
+"""Family DEFCON custom integration."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 import logging
 import hashlib
 import hmac
@@ -70,111 +67,6 @@ CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA = vol.Schema({vol.Optional("remove_old_sel
 
 
 
-
-def _family_defcon_verify_pin_static(pin: str, user_data: dict[str, Any]) -> bool:
-    """Verify fast SHA256 hashes, old PBKDF2 hashes, or legacy plain text PINs.
-
-    This module-level helper is intentionally duplicated from the runtime helper so
-    parent_admin_confirm can be registered even when async_setup_entry is reloaded
-    while the integration is already marked setup_complete.
-    """
-    stored_hash = str(user_data.get("pin_hash", "") or "")
-    if stored_hash:
-        try:
-            parts = stored_hash.split("$")
-            algo = parts[0]
-
-            if algo == "sha256" and len(parts) == 3:
-                _, salt, expected = parts
-                digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
-                return hmac.compare_digest(digest, expected)
-
-            if algo == "pbkdf2_sha256" and len(parts) == 4:
-                _, iterations_raw, salt, expected = parts
-                digest = hashlib.pbkdf2_hmac(
-                    "sha256",
-                    str(pin).encode(),
-                    salt.encode(),
-                    int(iterations_raw),
-                ).hex()
-                return hmac.compare_digest(digest, expected)
-
-            return False
-        except Exception:
-            return False
-
-    return hmac.compare_digest(str(user_data.get("pin", "")), str(pin))
-
-
-async def async_register_parent_confirm_services(hass: HomeAssistant) -> None:
-    """Register parent confirm/cancel services even during config-entry reloads.
-
-    This protects against Home Assistant reloads where hass.data[DOMAIN]["setup_complete"]
-    is already true, causing async_setup_entry to skip the full async_setup service
-    registration block.
-    """
-    hass.data.setdefault(DOMAIN, {})
-    state = hass.data[DOMAIN].setdefault("state", {})
-    config = hass.data[DOMAIN].setdefault("config", {})
-
-    async def _update_entities() -> None:
-        async_dispatcher_send(hass, SIGNAL_UPDATE)
-
-    async def _log_event(message: str) -> None:
-        state["last_event"] = message
-        events = state.setdefault("events", [])
-        events.append({"time": datetime.now().isoformat(timespec="seconds"), "message": message})
-        max_events = int(config.get("limits", {}).get("max_event_log", 25))
-        if max_events > 0:
-            del events[:-max_events]
-        await _update_entities()
-
-    async def _handle_parent_admin_confirm(call: ServiceCall) -> None:
-        pin = str(state.get("dashboard_pin", "") or state.get("parent_admin_pin", "") or "")
-        if not pin:
-            await _log_event("Parent admin action rejected. PIN required for confirm_parent_admin.")
-            return
-
-        users = config.get("auth", {}).get("users", {})
-        for person, data in users.items():
-            if not isinstance(data, dict):
-                continue
-            if _family_defcon_verify_pin_static(pin, data):
-                role = str(data.get("role", "")).lower()
-                if role != "parent":
-                    await _log_event(f"Parent admin action rejected. {person} is not a parent.")
-                    state["dashboard_pin"] = ""
-                    state["parent_admin_pin"] = ""
-                    await _update_entities()
-                    return
-
-                timeout = int(config.get("auth", {}).get("pin_timeout_seconds", 60))
-                state["parent_admin_confirm"] = True
-                state["parent_admin_confirmed_by"] = str(person)
-                state["parent_admin_confirm_expires"] = datetime.now() + timedelta(seconds=timeout)
-                state["dashboard_pin"] = ""
-                state["parent_admin_pin"] = ""
-                state["dashboard_confirm"] = False
-                await _log_event(f"Parent admin confirmed. Approved by {person}. Controls unlocked for {timeout} seconds.")
-                return
-
-        state["dashboard_pin"] = ""
-        state["parent_admin_pin"] = ""
-        await _log_event("Parent admin action rejected. Invalid parent PIN for confirm_parent_admin.")
-
-    async def _handle_parent_admin_cancel(call: ServiceCall) -> None:
-        state["parent_admin_confirm"] = False
-        state["parent_admin_confirmed_by"] = ""
-        state["parent_admin_confirm_expires"] = None
-        state["dashboard_pin"] = ""
-        state["parent_admin_pin"] = ""
-        state["dashboard_confirm"] = False
-        await _log_event("Parent admin confirmation cancelled.")
-
-    if not hass.services.has_service(DOMAIN, "parent_admin_confirm"):
-        hass.services.async_register(DOMAIN, "parent_admin_confirm", _handle_parent_admin_confirm)
-    if not hass.services.has_service(DOMAIN, "parent_admin_cancel"):
-        hass.services.async_register(DOMAIN, "parent_admin_cancel", _handle_parent_admin_cancel)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -282,9 +174,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         station settings are refreshed through the reload_config service.
         """
         hass.data.setdefault(DOMAIN, {})["config_entry"] = updated_entry
-        if hass.data[DOMAIN].get("setup_complete") and hass.services.has_service(DOMAIN, "reload_config"):
-            _LOGGER.info("Family DEFCON options updated. Applying active config. Restart Home Assistant if people or dashboard targets were added or removed.")
-            await hass.services.async_call(DOMAIN, "reload_config", {}, blocking=True)
+        if hass.data[DOMAIN].get("setup_complete"):
+            _LOGGER.info("Family DEFCON options updated. Re-running setup to apply services and active config. Restart Home Assistant if people or dashboard targets were added or removed.")
+            await async_setup(hass, {})
             persistent_notification.async_create(
                 hass,
                 "Family DEFCON settings were saved. Active config was reloaded. If you added, removed, or renamed people or dashboard targets, restart Home Assistant so generated entities are recreated.",
@@ -294,10 +186,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
-    if hass.data[DOMAIN].get("setup_complete"):
-        await async_register_parent_confirm_services(hass)
-        return True
-
+    # Always run async_setup after a config entry load/reload. async_setup is idempotent below:
+    # services are re-registered safely, timers are replaced, and platforms are loaded once.
     result = await async_setup(hass, {})
     if result:
         hass.data[DOMAIN]["setup_complete"] = True
@@ -474,30 +364,35 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         """Clean and validate cross references in the active normalized config."""
         people = [str(person) for person in normalized.get("people", []) if str(person).strip()]
         normalized["people"] = people
-        people_set = set(people)
+        people_by_lower = {person.lower(): person for person in people}
+
+        def _canon(value: str) -> str | None:
+            return people_by_lower.get(str(value).lower())
 
         normalized["default_targets"] = [
-            str(person) for person in normalized.get("default_targets", [])
-            if str(person) in people_set
+            canon for item in normalized.get("default_targets", [])
+            if (canon := _canon(str(item))) is not None
         ]
         normalized["parent_targets"] = [
-            str(person) for person in normalized.get("parent_targets", [])
-            if str(person) in people_set
+            canon for item in normalized.get("parent_targets", [])
+            if (canon := _canon(str(item))) is not None
         ]
 
         auth_users = normalized.get("auth", {}).get("users", {})
         if not isinstance(auth_users, dict):
             auth_users = {}
+        auth_by_lower = {str(key).lower(): value for key, value in auth_users.items()}
         normalized["auth"]["users"] = {
-            person: auth_users.get(person, {"role": "child"})
+            person: auth_by_lower.get(person.lower(), auth_users.get(person, {"role": "child"}))
             for person in people
         }
 
         clients = normalized.get("dns", {}).get("adguard_home", {}).get("clients", {})
         if not isinstance(clients, dict):
             clients = {}
+        clients_by_lower = {str(key).lower(): value for key, value in clients.items()}
         normalized["dns"]["adguard_home"]["clients"] = {
-            person: clients.get(person, {"client_name": person, "enabled": True})
+            person: clients_by_lower.get(person.lower(), clients.get(person, {"client_name": person, "enabled": True}))
             for person in people
         }
 
@@ -701,7 +596,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if opts.get("mutual_destruction_scope"):
             normalized["dns"]["mutual_destruction_scope"] = str(opts["mutual_destruction_scope"])
         if opts.get("adguard_base_url"):
-            normalized["dns"]["adguard_home"]["base_url"] = str(opts["adguard_base_url"]).rstrip("/")
+            normalized["dns"]["provider"] = "adguard_home"
+            normalized["dns"]["enabled"] = bool(opts.get("dns_enabled", True))
+            normalized["dns"]["enforcement_mode"] = str(opts.get("enforcement_mode", "active") or "active")
+            normalized["dns"]["adguard_home"]["base_url"] = str(opts["adguard_base_url"]).strip().rstrip("/")
         if opts.get("adguard_username_secret"):
             normalized["dns"]["adguard_home"]["username_secret"] = str(opts["adguard_username_secret"])
         if opts.get("adguard_password_secret"):
@@ -718,12 +616,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         _LOGGER.error("Family DEFCON has no people configured. Add people to /config/family_defcon.yaml.")
 
     stored = await store.async_load() or {}
+    existing_state = hass.data[DOMAIN].get("state", {}) if isinstance(hass.data[DOMAIN].get("state", {}), dict) else {}
     people = hass.data[DOMAIN]["config"]["people"]
 
     state = {
-        "armed": bool(stored.get("armed", False)),
+        "armed": bool(existing_state.get("armed", stored.get("armed", False))),
         "allow_parent_targets": bool(stored.get("allow_parent_targets", hass.data[DOMAIN]["config"]["allow_parent_targets_default"])),
-        "mutual_destruction": bool(stored.get("mutual_destruction", False)),
+        "mutual_destruction": bool(existing_state.get("mutual_destruction", stored.get("mutual_destruction", False))),
         "daily_launches": int(stored.get("daily_launches", 0)),
         "conflict_chain": int(stored.get("conflict_chain", 0)),
         "last_launcher": str(stored.get("last_launcher", "")),
@@ -753,11 +652,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     }
 
     for person, value in stored.get("blocked_until", {}).items():
-        if person in state["blocked_until"] and value:
+        if not value:
+            continue
+        canonical = str(person)
+        for configured in people:
+            if str(configured).lower() == str(person).lower():
+                canonical = configured
+                break
+        if canonical in state["blocked_until"]:
             try:
-                state["blocked_until"][person] = datetime.fromisoformat(value)
+                state["blocked_until"][canonical] = datetime.fromisoformat(value)
             except Exception:
-                state["blocked_until"][person] = None
+                state["blocked_until"][canonical] = None
+
+    existing_blocked = existing_state.get("blocked_until", {}) if isinstance(existing_state, dict) else {}
+    if isinstance(existing_blocked, dict):
+        for person, value in existing_blocked.items():
+            if not value:
+                continue
+            canonical = str(person)
+            for configured in people:
+                if str(configured).lower() == str(person).lower():
+                    canonical = configured
+                    break
+            if canonical in state["blocked_until"]:
+                state["blocked_until"][canonical] = value
 
     hass.data[DOMAIN]["state"] = state
     hass.data[DOMAIN]["store"] = store
@@ -767,6 +686,185 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     def st() -> dict:
         return hass.data[DOMAIN]["state"]
+
+    def normalize_adguard_base_url(raw_url: Any) -> str:
+        """Normalize UI/YAML AdGuard URL into a usable web API base URL."""
+        value = str(raw_url or "").strip()
+        if not value:
+            return ""
+
+        # Users often paste just an IP/host. Assume http.
+        if "://" not in value:
+            value = "http://" + value
+
+        value = value.rstrip("/")
+
+        parsed = urlparse(value)
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+
+        # AdGuard Home UI/API path should be host[:port], not a /control endpoint.
+        if value.endswith("/control") or "/control/" in value:
+            value = value.split("/control", 1)[0].rstrip("/")
+
+        return value
+
+    def safe_adguard_url_for_log(base_url: str, path: str = "") -> str:
+        """Return sanitized URL for event/log messages."""
+        base = normalize_adguard_base_url(base_url)
+        if not base:
+            return "blank"
+        try:
+            parsed = urlparse(base)
+            host = parsed.netloc
+            return f"{parsed.scheme}://{host}{path}"
+        except Exception:
+            return base + path
+
+    def resolve_adguard_credential(value: Any, default_secret_name: str) -> str:
+        """Resolve AdGuard credential from UI/YAML.
+
+        Supports both intended secrets usage and the real-world UI behavior where
+        users enter literal username/password into the fields named *_secret.
+
+        Resolution order:
+        1. If value matches a key in secrets.yaml, use that secret.
+        2. If value is blank, try default_secret_name from secrets.yaml.
+        3. Otherwise treat value as the literal credential.
+        """
+        raw = str(value or "").strip()
+        secrets = hass.data.get(DOMAIN, {}).get("secrets", {}) or {}
+
+        if raw and raw in secrets:
+            return str(secrets.get(raw, "") or "")
+
+        if not raw and default_secret_name in secrets:
+            return str(secrets.get(default_secret_name, "") or "")
+
+        if raw:
+            return raw
+
+        return ""
+
+    def canonical_person_name(person: str) -> str:
+        """Return configured person name using case-insensitive matching."""
+        person_text = str(person).strip()
+        for configured in conf().get("people", []):
+            if str(configured).strip().lower() == person_text.lower():
+                return str(configured)
+        return person_text
+
+    def person_in_list(person: str, values: list) -> bool:
+        person_text = str(person).strip().lower()
+        return any(str(value).strip().lower() == person_text for value in values or [])
+
+    def get_blocked_until(person: str):
+        """Read a blocked_until value using case-insensitive person matching."""
+        person_text = str(person).lower()
+        blocked_until = st().setdefault("blocked_until", {})
+        if not isinstance(blocked_until, dict):
+            return None
+        if person in blocked_until:
+            return blocked_until.get(person)
+        for key, value in blocked_until.items():
+            if str(key).lower() == person_text:
+                return value
+        return None
+
+    def set_blocked_until(person: str, value) -> None:
+        """Write blocked_until using the configured canonical person key."""
+        canonical = canonical_person_name(person)
+        st().setdefault("blocked_until", {})
+        st()["blocked_until"][canonical] = value
+
+    def normalize_blocked_until_state() -> None:
+        """Preserve existing blocked_until values while aligning keys to configured people."""
+        old = st().get("blocked_until", {})
+        if not isinstance(old, dict):
+            old = {}
+        new_map = {person: None for person in conf().get("people", [])}
+        for old_key, old_value in old.items():
+            canonical = canonical_person_name(str(old_key))
+            if canonical in new_map:
+                new_map[canonical] = old_value
+        st()["blocked_until"] = new_map
+
+    def apply_ui_adguard_mapping() -> None:
+        """Map UI AdGuard options into the same runtime structure as advanced YAML."""
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+
+        ui_base_url = normalize_adguard_base_url(opts.get("adguard_base_url", ""))
+        config = conf()
+        config.setdefault("dns", {})
+        config["dns"].setdefault("adguard_home", {})
+
+        dns = config["dns"]
+        adguard = dns["adguard_home"]
+
+        yaml_base_url = normalize_adguard_base_url(adguard.get("base_url", ""))
+
+        # UI URL wins if set. Otherwise keep working advanced YAML URL.
+        base_url = ui_base_url or yaml_base_url
+        if not base_url:
+            return
+
+        dns["enabled"] = bool(opts.get("dns_enabled", dns.get("enabled", True)))
+        dns["provider"] = "adguard_home"
+        dns["enforcement_mode"] = str(opts.get("enforcement_mode", dns.get("enforcement_mode", "active")) or "active")
+        dns.setdefault("mutual_destruction_scope", "default_targets")
+
+        adguard["base_url"] = base_url
+        adguard["rule_prefix"] = str(opts.get("adguard_rule_prefix", "") or adguard.get("rule_prefix", "Family DEFCON Block") or "Family DEFCON Block")
+
+        # Preserve both legacy secret-name fields and resolved runtime credentials.
+        username_field = opts.get("adguard_username_secret", adguard.get("username_secret", adguard.get("username", "")))
+        password_field = opts.get("adguard_password_secret", adguard.get("password_secret", adguard.get("password", "")))
+
+        adguard["username_secret"] = str(username_field or "adguard_username")
+        adguard["password_secret"] = str(password_field or "adguard_password")
+        adguard["username"] = resolve_adguard_credential(username_field, "adguard_username")
+        adguard["password"] = resolve_adguard_credential(password_field, "adguard_password")
+
+        raw_clients = opts.get("people_adguard_clients", {})
+        if not isinstance(raw_clients, dict):
+            raw_clients = {}
+
+        for key, value in opts.items():
+            if str(key).startswith("adguard_client_") and value:
+                person = str(key).replace("adguard_client_", "", 1)
+                raw_clients[person] = value
+
+        people = list(config.get("people", []) or [])
+        if not people:
+            people = list(raw_clients.keys())
+
+        old_clients = adguard.get("clients", {})
+        if not isinstance(old_clients, dict):
+            old_clients = {}
+
+        clients: dict[str, dict[str, Any]] = {}
+        for person in people:
+            person_name = str(person)
+            existing = old_clients.get(person_name, {})
+            if not isinstance(existing, dict):
+                existing = {}
+            client_name = str(raw_clients.get(person_name, "") or existing.get("client_name", "") or person_name)
+            clients[person_name] = {
+                "client_name": client_name,
+                "enabled": bool(existing.get("enabled", True)),
+            }
+
+        for person, client in raw_clients.items():
+            person_name = str(person)
+            if person_name not in clients:
+                clients[person_name] = {
+                    "client_name": str(client or person_name),
+                    "enabled": True,
+                }
+
+        adguard["clients"] = clients
+
 
     async def save_state() -> None:
         payload = dict(st())
@@ -791,6 +889,22 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def update_entities() -> None:
         async_dispatcher_send(hass, SIGNAL_UPDATE)
+
+    async def notify_debug_status(title: str, message: str) -> None:
+        """Show an HA persistent notification as a fallback diagnostic channel."""
+        try:
+            await hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": title,
+                    "message": message,
+                    "notification_id": "family_defcon_debug_status",
+                },
+                blocking=False,
+            )
+        except Exception:
+            _LOGGER.exception("Family DEFCON failed to create persistent notification")
 
     async def cleanup_target_button_entity_registry(
         *,
@@ -842,94 +956,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await save_state()
         await update_entities()
 
-    async def verify_parent_admin_pin(action_name: str) -> tuple[bool, str]:
-        """Validate the current dashboard PIN as a parent role PIN."""
-        pin = str(st().get("dashboard_pin", "") or st().get("parent_admin_pin", "") or "")
-        if not pin:
-            message = f"Parent admin action rejected. PIN required for {action_name}."
-            await log_event(message)
-            fire_family_event("parent_admin_rejected", action=action_name, reason="pin_required", message=message)
-            return False, ""
 
-        for person, data in conf()["auth"]["users"].items():
-            if not isinstance(data, dict):
-                continue
-
-            if verify_pin_value(pin, data):
-                role = str(data.get("role", "")).lower()
-                if role == "parent":
-                    return True, str(person)
-
-                message = f"Parent admin action rejected. {person} is not a parent."
-                await log_event(message)
-                fire_family_event("parent_admin_rejected", action=action_name, launcher=person, reason="not_parent", message=message)
-                return False, str(person)
-
-        message = f"Parent admin action rejected. Invalid parent PIN for {action_name}."
-        await log_event(message)
-        fire_family_event("parent_admin_rejected", action=action_name, reason="bad_pin", message=message)
-        return False, ""
-
-
-    async def clear_parent_admin_pin() -> None:
-        """Clear only the typed PIN, not a confirmed parent session."""
-        st()["parent_admin_pin"] = ""
-        st()["dashboard_pin"] = ""
-        st()["dashboard_confirm"] = False
-        await update_entities()
-
-    def parent_admin_session_active() -> tuple[bool, str]:
-        expires = st().get("parent_admin_confirm_expires")
-        confirmed_by = str(st().get("parent_admin_confirmed_by", "") or "")
-        if bool(st().get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
-            return True, confirmed_by
-
-        st()["parent_admin_confirm"] = False
-        st()["parent_admin_confirmed_by"] = ""
-        st()["parent_admin_confirm_expires"] = None
-        return False, ""
-
-    async def clear_parent_admin_session(message: str | None = None) -> None:
-        st()["parent_admin_confirm"] = False
-        st()["parent_admin_confirmed_by"] = ""
-        st()["parent_admin_confirm_expires"] = None
-        st()["parent_admin_pin"] = ""
-        st()["dashboard_pin"] = ""
-        st()["dashboard_confirm"] = False
-        if message:
-            await log_event(message)
-        await update_entities()
-
-    async def confirm_parent_admin_session(action_name: str = "confirm_parent_admin") -> tuple[bool, str]:
-        ok, parent = await verify_parent_admin_pin(action_name)
-        if not ok:
-            await clear_parent_admin_session()
-            return False, parent
-
-        timeout = int(conf().get("auth", {}).get("pin_timeout_seconds", 60))
-        st()["parent_admin_confirm"] = True
-        st()["parent_admin_confirmed_by"] = parent
-        st()["parent_admin_confirm_expires"] = datetime.now() + timedelta(seconds=timeout)
-        st()["parent_admin_pin"] = ""
-        st()["dashboard_pin"] = ""
-        st()["dashboard_confirm"] = False
-
-        message = f"Parent admin confirmed. Approved by {parent}. Controls unlocked for {timeout} seconds."
-        await log_event(message)
-        fire_family_event("parent_admin_confirmed", parent=parent, expires_in_seconds=timeout, message=message)
-        await update_entities()
-        return True, parent
-
-    async def require_parent_admin_session(action_name: str) -> tuple[bool, str]:
-        active, parent = parent_admin_session_active()
-        if active:
-            return True, parent
-
-        message = f"Parent admin action rejected. Confirm parent PIN before {action_name}."
-        await log_event(message)
-        fire_family_event("parent_admin_rejected", action=action_name, reason="confirm_required", message=message)
-        await update_entities()
-        return False, ""
 
 
 
@@ -941,12 +968,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return conf()["default_targets"]
 
     def is_blocked(person: str) -> bool:
+        canonical = canonical_person_name(person)
         if st()["mutual_destruction"]:
             scope = str(conf().get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
             if scope in ("all", "everyone", "people", "all_people"):
-                return person in conf()["people"]
-            return person in conf()["default_targets"]
-        until = st()["blocked_until"].get(person)
+                return person_in_list(canonical, conf()["people"])
+            return person_in_list(canonical, conf()["default_targets"])
+        until = get_blocked_until(canonical)
         return isinstance(until, datetime) and until > datetime.now()
 
     def active_block_count() -> int:
@@ -976,53 +1004,66 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def adguard_call_json(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[bool, Any]:
         """Call AdGuard Home using JSON."""
+        apply_ui_adguard_mapping()
         adguard = conf()["dns"]["adguard_home"]
-        base_url = adguard["base_url"]
+        base_url = normalize_adguard_base_url(adguard.get("base_url", ""))
+
         if not base_url:
-            _LOGGER.error("Family DEFCON AdGuard base_url is blank.")
+            st()["adguard"]["last_error"] = "AdGuard base_url is blank or invalid after UI/YAML mapping."
+            await log_event("Family DEFCON AdGuard base_url is blank or invalid after UI/YAML mapping.")
             return False, None
 
-        username = adguard["username"] or await get_secret(adguard["username_secret"])
-        password = adguard["password"] or await get_secret(adguard["password_secret"])
-        auth = aiohttp.BasicAuth(username, password) if username or password else None
+        url = base_url + path
+        safe_url = safe_adguard_url_for_log(base_url, path)
 
-        session = async_get_clientsession(hass)
+        username = str(adguard.get("username", "") or "")
+        password = str(adguard.get("password", "") or "")
+
+        auth = None
+        if username or password:
+            auth = aiohttp.BasicAuth(username, password)
+
         try:
-            if method == "GET":
-                async with session.get(f"{base_url}{path}", auth=auth, timeout=10) as resp:
-                    text = await resp.text()
-                    if resp.status not in (200, 204):
-                        _LOGGER.warning("Family DEFCON AdGuard GET failed: %s %s %s", path, resp.status, text)
-                        if "state" in hass.data.get(DOMAIN, {}):
-                            st()["adguard_last_status"] = "error"
-                            st()["adguard_last_error"] = f"GET {path} failed: HTTP {resp.status}"
-                            st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
-                        return False, None
-                    try:
-                        return True, await resp.json()
-                    except Exception:
-                        return True, text
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout, auth=auth) as session:
+                if method.upper() == "GET":
+                    async with session.get(url) as resp:
+                        text = await resp.text()
+                        if resp.status >= 400:
+                            st()["adguard"]["last_error"] = f"GET {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                            await log_event(st()["adguard"]["last_error"])
+                            return False, None
+                        try:
+                            return True, await resp.json()
+                        except Exception:
+                            st()["adguard"]["last_error"] = f"GET {safe_url} returned non-JSON response."
+                            await log_event(st()["adguard"]["last_error"])
+                            return False, None
 
-            async with session.post(f"{base_url}{path}", json=payload or {}, auth=auth, timeout=10) as resp:
-                text = await resp.text()
-                if resp.status not in (200, 204):
-                    _LOGGER.warning("Family DEFCON AdGuard POST failed: %s %s %s", path, resp.status, text)
-                    if "state" in hass.data.get(DOMAIN, {}):
-                        st()["adguard_last_status"] = "error"
-                        st()["adguard_last_error"] = f"POST {path} failed: HTTP {resp.status}"
-                        st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
-                    return False, None
-                try:
-                    return True, await resp.json()
-                except Exception:
-                    return True, text
-        except Exception as err:
-            _LOGGER.error("Family DEFCON AdGuard call error: %s %s", path, err)
-            if "state" in hass.data.get(DOMAIN, {}):
-                st()["adguard_last_status"] = "error"
-                st()["adguard_last_error"] = f"{path}: {err}"
-                st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
+                if method.upper() == "POST":
+                    async with session.post(url, json=payload or {}) as resp:
+                        text = await resp.text()
+                        if resp.status >= 400:
+                            st()["adguard"]["last_error"] = f"POST {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                            await log_event(st()["adguard"]["last_error"])
+                            return False, None
+                        if text:
+                            try:
+                                return True, json.loads(text)
+                            except Exception:
+                                return True, text
+                        return True, {}
+
+                st()["adguard"]["last_error"] = f"Unsupported AdGuard method: {method}"
+                await log_event(st()["adguard"]["last_error"])
+                return False, None
+
+        except Exception as exc:
+            st()["adguard"]["last_error"] = f"{method.upper()} {safe_url} failed: {type(exc).__name__}: {exc}"
+            await log_event(st()["adguard"]["last_error"])
+            LOGGER.exception("Family DEFCON AdGuard %s failed for %s", method.upper(), safe_url)
             return False, None
+
 
     def adguard_rule_for_person(person: str) -> str | None:
         adguard = conf()["dns"]["adguard_home"]
@@ -1132,6 +1173,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await hass.services.async_call(domain, service, service_data, blocking=False)
 
     async def enforce_now() -> None:
+        apply_ui_adguard_mapping()
         dns = conf()["dns"]
         if not dns["enabled"] or dns["enforcement_mode"] != "active":
             return
@@ -1244,10 +1286,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return True, ""
 
     async def add_timeout(person: str, minutes: int) -> None:
+        canonical = canonical_person_name(person)
         now = datetime.now()
-        current = st()["blocked_until"].get(person)
+        current = get_blocked_until(canonical)
         base = current if isinstance(current, datetime) and current > now else now
-        st()["blocked_until"][person] = base + timedelta(minutes=minutes)
+        set_blocked_until(canonical, base + timedelta(minutes=minutes))
 
     async def reject_launch(reason: str, launcher: str = "", target: str = "", station: str = "") -> None:
         message = f"Launch rejected. {reason}"
@@ -1262,16 +1305,18 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         )
 
     async def apply_launch(launcher: str, target: str, station: str) -> None:
+        launcher = canonical_person_name(launcher)
+        target = canonical_person_name(target)
         if not st()["armed"]:
             await reject_launch("Command system is not armed.", launcher, target, station)
             return
-        if launcher not in conf()["people"]:
+        if not person_in_list(launcher, conf()["people"]):
             await reject_launch(f"Unknown launcher {launcher}.", launcher, target, station)
             return
-        if target not in valid_targets():
+        if not person_in_list(target, valid_targets()):
             await reject_launch(f"{target} is protected.", launcher, target, station)
             return
-        if launcher == target:
+        if str(launcher).lower() == str(target).lower():
             await reject_launch("Self targeting is not allowed.", launcher, target, station)
             return
 
@@ -1463,7 +1508,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         st()["last_launcher"] = ""
         st()["last_target"] = ""
         for person in conf()["people"]:
-            st()["blocked_until"][person] = None
+            set_blocked_until(person, None)
         await log_event("All DEFCON timeouts cleared.")
         fire_family_event("clear_all", message="All DEFCON timeouts cleared.")
         await enforce_now()
@@ -1492,7 +1537,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         # Keep runtime state aligned with the active people list.
         active_people = list(conf().get("people", []))
-        st()["blocked_until"] = {person: st().get("blocked_until", {}).get(person) for person in active_people}
+        normalize_blocked_until_state()
         st()["adguard_applied"] = {person: st().get("adguard_applied", {}).get(person, False) for person in active_people}
 
         targets = dashboard_targets()
@@ -1513,15 +1558,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def handle_block_person(call: ServiceCall) -> None:
         person = call.data["person"]
-        if person in conf()["people"]:
+        if person_in_list(person, conf()["people"]):
             await add_timeout(person, 999 * 60)
             await log_event(f"{person} manually blocked.")
             await enforce_now()
 
     async def handle_unblock_person(call: ServiceCall) -> None:
         person = call.data["person"]
-        if person in conf()["people"]:
-            st()["blocked_until"][person] = None
+        if person_in_list(person, conf()["people"]):
+            set_blocked_until(person, None)
             await log_event(f"{person} manually unblocked.")
             await enforce_now()
 
@@ -1534,6 +1579,104 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             notification_id="family_defcon_pin_hash",
         )
         await log_event("PIN hash generated in Home Assistant notifications.")
+
+    async def handle_debug_status(call: ServiceCall) -> None:
+        """Create a visible diagnostic notification and update last_event."""
+        apply_ui_adguard_mapping()
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+        dns = conf().get("dns", {})
+        adguard = dns.get("adguard_home", {})
+        clients = adguard.get("clients", {})
+        base_url = str(adguard.get("base_url", "") or "")
+        ui_base_url = str(opts.get("adguard_base_url", "") or "")
+        provider = str(dns.get("provider", ""))
+        enabled = bool(dns.get("enabled", False))
+        mode = str(dns.get("enforcement_mode", ""))
+        version = "1.0.7"
+
+        message = (
+            f"Family DEFCON debug status v{version}: "
+            f"ui_base_url={'set' if ui_base_url else 'blank'}, "
+            f"runtime_base_url={'set' if base_url else 'blank'}, "
+            f"enabled={enabled}, provider={provider}, mode={mode}, "
+            f"client_count={len(clients) if isinstance(clients, dict) else 0}."
+        )
+        await log_event(message)
+        await notify_debug_status("Family DEFCON Debug Status", message)
+        fire_family_event("debug_status", message=message)
+        await update_entities()
+
+    async def handle_adguard_connection_test(call: ServiceCall) -> None:
+        """Test UI/YAML AdGuard connection string and credentials."""
+        apply_ui_adguard_mapping()
+        dns = conf().get("dns", {})
+        adguard = dns.get("adguard_home", {})
+        base_url = normalize_adguard_base_url(adguard.get("base_url", ""))
+        clients = adguard.get("clients", {})
+        username_set = bool(str(adguard.get("username", "") or ""))
+        password_set = bool(str(adguard.get("password", "") or ""))
+
+        if not base_url:
+            message = "AdGuard connection test failed: runtime base_url is blank or invalid."
+            st()["adguard"]["last_error"] = message
+            await log_event(message)
+            if "notify_debug_status" in locals():
+                await notify_debug_status("Family DEFCON AdGuard Connection Test", message)
+            await update_entities()
+            return
+
+        ok, data = await adguard_call_json("GET", "/control/filtering/status")
+        if ok:
+            keys = sorted(list(data.keys())) if isinstance(data, dict) else []
+            message = (
+                f"AdGuard connection test OK: endpoint={safe_adguard_url_for_log(base_url, '/control/filtering/status')}, "
+                f"auth_username_set={username_set}, auth_password_set={password_set}, "
+                f"client_count={len(clients) if isinstance(clients, dict) else 0}, "
+                f"status_keys={','.join(keys[:8])}."
+            )
+            st()["adguard"]["last_error"] = ""
+        else:
+            message = (
+                f"AdGuard connection test failed: endpoint={safe_adguard_url_for_log(base_url, '/control/filtering/status')}, "
+                f"auth_username_set={username_set}, auth_password_set={password_set}, "
+                f"error={st().get('adguard', {}).get('last_error', 'unknown')}."
+            )
+
+        await log_event(message)
+        if "notify_debug_status" in locals():
+            await notify_debug_status("Family DEFCON AdGuard Connection Test", message)
+        await update_entities()
+
+    async def handle_adguard_config_status(call: ServiceCall) -> None:
+        apply_ui_adguard_mapping()
+        entry = hass.data.get(DOMAIN, {}).get("config_entry")
+        opts = dict(getattr(entry, "options", {}) or {})
+        dns = conf().get("dns", {})
+        adguard = dns.get("adguard_home", {})
+        clients = adguard.get("clients", {})
+        ui_url = normalize_adguard_base_url(opts.get("adguard_base_url", ""))
+        runtime_url = normalize_adguard_base_url(adguard.get("base_url", ""))
+        provider = str(dns.get("provider", ""))
+        enabled = bool(dns.get("enabled", False))
+        mode = str(dns.get("enforcement_mode", ""))
+        prefix = str(adguard.get("rule_prefix", ""))
+        username_set = bool(str(adguard.get("username", "") or ""))
+        password_set = bool(str(adguard.get("password", "") or ""))
+        message = (
+            f"AdGuard config status: ui_base_url={'set' if ui_url else 'blank'}, "
+            f"runtime_base_url={'set' if runtime_url else 'blank'}, "
+            f"endpoint={safe_adguard_url_for_log(runtime_url, '/control/filtering/status') if runtime_url else 'blank'}, "
+            f"enabled={enabled}, provider={provider}, mode={mode}, "
+            f"auth_username_set={username_set}, auth_password_set={password_set}, "
+            f"client_count={len(clients) if isinstance(clients, dict) else 0}, "
+            f"rule_prefix={'set' if prefix else 'blank'}."
+        )
+        await log_event(message)
+        if "notify_debug_status" in locals():
+            await notify_debug_status("Family DEFCON AdGuard Config Status", message)
+        await update_entities()
+
 
     async def handle_config_audit_status(call: ServiceCall) -> None:
         """Log a safe audit of active config variables without exposing PIN values."""
@@ -1610,6 +1753,102 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if skipped:
             message += " Skipped: " + "; ".join(skipped) + "."
         await log_event(message)
+
+
+
+
+
+
+
+
+
+    async def verify_parent_admin_pin(action_name: str) -> tuple[bool, str]:
+        """Validate current dashboard PIN as a parent user PIN."""
+        pin = str(st().get("dashboard_pin", "") or st().get("parent_admin_pin", "") or "")
+        if not pin:
+            message = f"Parent admin action rejected. PIN required for {action_name}."
+            await log_event(message)
+            fire_family_event("parent_admin_rejected", action=action_name, reason="pin_required", message=message)
+            return False, ""
+
+        for person, data in conf()["auth"]["users"].items():
+            if not isinstance(data, dict):
+                continue
+
+            if verify_pin_value(pin, data):
+                role = str(data.get("role", "") or "").lower()
+                if role == "parent":
+                    return True, str(person)
+
+                message = f"Parent admin action rejected. {person} is not a parent."
+                await log_event(message)
+                fire_family_event("parent_admin_rejected", action=action_name, launcher=person, reason="not_parent", message=message)
+                return False, str(person)
+
+        message = f"Parent admin action rejected. Invalid parent PIN for {action_name}."
+        await log_event(message)
+        fire_family_event("parent_admin_rejected", action=action_name, reason="bad_pin", message=message)
+        return False, ""
+
+    async def clear_parent_admin_pin() -> None:
+        """Clear only the typed PINs, not a confirmed parent session."""
+        st()["parent_admin_pin"] = ""
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
+        await update_entities()
+
+    def parent_admin_session_active() -> tuple[bool, str]:
+        expires = st().get("parent_admin_confirm_expires")
+        confirmed_by = str(st().get("parent_admin_confirmed_by", "") or "")
+        if bool(st().get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+            return True, confirmed_by
+
+        st()["parent_admin_confirm"] = False
+        st()["parent_admin_confirmed_by"] = ""
+        st()["parent_admin_confirm_expires"] = None
+        return False, ""
+
+    async def clear_parent_admin_session(message: str | None = None) -> None:
+        st()["parent_admin_confirm"] = False
+        st()["parent_admin_confirmed_by"] = ""
+        st()["parent_admin_confirm_expires"] = None
+        st()["parent_admin_pin"] = ""
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
+        if message:
+            await log_event(message)
+        await update_entities()
+
+    async def confirm_parent_admin_session(action_name: str = "confirm_parent_admin") -> tuple[bool, str]:
+        ok, parent = await verify_parent_admin_pin(action_name)
+        if not ok:
+            await clear_parent_admin_session()
+            return False, parent
+
+        timeout = int(conf().get("auth", {}).get("pin_timeout_seconds", 60))
+        st()["parent_admin_confirm"] = True
+        st()["parent_admin_confirmed_by"] = parent
+        st()["parent_admin_confirm_expires"] = datetime.now() + timedelta(seconds=timeout)
+        st()["parent_admin_pin"] = ""
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
+
+        message = f"Parent admin confirmed. Approved by {parent}. Controls unlocked for {timeout} seconds."
+        await log_event(message)
+        fire_family_event("parent_admin_confirmed", parent=parent, expires_in_seconds=timeout, message=message)
+        await update_entities()
+        return True, parent
+
+    async def require_parent_admin_session(action_name: str) -> tuple[bool, str]:
+        active, parent = parent_admin_session_active()
+        if active:
+            return True, parent
+
+        message = f"Parent admin action rejected. Confirm parent PIN before {action_name}."
+        await log_event(message)
+        fire_family_event("parent_admin_rejected", action=action_name, reason="confirm_required", message=message)
+        await update_entities()
+        return False, ""
 
     async def handle_dashboard_keypress(call: ServiceCall) -> None:
         digit = str(call.data["digit"])
@@ -1791,6 +2030,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await update_entities()
 
 
+
+
+
+
+
+
     async def handle_parent_admin_confirm(call: ServiceCall) -> None:
         await confirm_parent_admin_session("confirm_parent_admin")
 
@@ -1875,36 +2120,58 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         )
         await update_entities()
 
-    hass.services.async_register(DOMAIN, "parent_admin_keypress", handle_parent_admin_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
-    hass.services.async_register(DOMAIN, "parent_admin_backspace", handle_parent_admin_backspace)
-    hass.services.async_register(DOMAIN, "parent_admin_clear_pin", handle_parent_admin_clear_pin)
-    hass.services.async_register(DOMAIN, "parent_admin_clear_all", handle_parent_admin_clear_all)
-    hass.services.async_register(DOMAIN, "parent_admin_enforce_now", handle_parent_admin_enforce_now)
-    hass.services.async_register(DOMAIN, "parent_admin_arm", handle_parent_admin_arm)
-    hass.services.async_register(DOMAIN, "parent_admin_disarm", handle_parent_admin_disarm)
-    hass.services.async_register(DOMAIN, "parent_admin_cleanup_targets", handle_parent_admin_cleanup_targets)
-    hass.services.async_register(DOMAIN, "cleanup_target_button_entities", handle_cleanup_target_button_entities, schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA)
-    hass.services.async_register(DOMAIN, "launch", handle_launch, schema=LAUNCH_SCHEMA)
-    hass.services.async_register(DOMAIN, "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
-    hass.services.async_register(DOMAIN, "clear_all", handle_clear_all)
-    hass.services.async_register(DOMAIN, "stand_down", handle_stand_down)
-    hass.services.async_register(DOMAIN, "set_armed", handle_set_armed, schema=BOOL_SCHEMA)
-    hass.services.async_register(DOMAIN, "set_parent_targets", handle_set_parent_targets, schema=BOOL_SCHEMA)
-    hass.services.async_register(DOMAIN, "enforce_now", handle_enforce_now)
-    hass.services.async_register(DOMAIN, "reload_config", handle_reload_config)
-    hass.services.async_register(DOMAIN, "block_person", handle_block_person, schema=PERSON_SCHEMA)
-    hass.services.async_register(DOMAIN, "unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
-    hass.services.async_register(DOMAIN, "dashboard_keypress", handle_dashboard_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
-    hass.services.async_register(DOMAIN, "dashboard_backspace", handle_dashboard_backspace)
-    hass.services.async_register(DOMAIN, "dashboard_clear_pin", handle_dashboard_clear_pin)
-    hass.services.async_register(DOMAIN, "parent_admin_confirm", handle_parent_admin_confirm)
-    hass.services.async_register(DOMAIN, "parent_admin_cancel", handle_parent_admin_cancel)
-    hass.services.async_register(DOMAIN, "dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
-    hass.services.async_register(DOMAIN, "dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
-    hass.services.async_register(DOMAIN, "hash_pin", handle_hash_pin, schema=HASH_PIN_SCHEMA)
-    hass.services.async_register(DOMAIN, "auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA)
-    hass.services.async_register(DOMAIN, "config_audit_status", handle_config_audit_status, schema=CONFIG_AUDIT_SCHEMA)
-    hass.services.async_register(DOMAIN, "migrate_entity_ids", handle_migrate_entity_ids)
+
+    def safe_register_service(service_name: str, handler, schema=None) -> None:
+        """Register or replace a Family DEFCON service.
+
+        Home Assistant can keep services from an older version in memory during
+        config-entry reloads/HACS updates. Re-register safely so newly added
+        actions are present without requiring manual cleanup.
+        """
+        try:
+            if hass.services.has_service(DOMAIN, service_name):
+                hass.services.async_remove(DOMAIN, service_name)
+        except Exception:
+            LOGGER.exception("Family DEFCON failed removing old service %s", service_name)
+
+        if schema is None:
+            hass.services.async_register(DOMAIN, service_name, handler)
+        else:
+            hass.services.async_register(DOMAIN, service_name, handler, schema=schema)
+
+    safe_register_service("parent_admin_keypress", handle_parent_admin_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    safe_register_service("parent_admin_backspace", handle_parent_admin_backspace)
+    safe_register_service("parent_admin_clear_pin", handle_parent_admin_clear_pin)
+    safe_register_service("parent_admin_clear_all", handle_parent_admin_clear_all)
+    safe_register_service("parent_admin_enforce_now", handle_parent_admin_enforce_now)
+    safe_register_service("parent_admin_arm", handle_parent_admin_arm)
+    safe_register_service("parent_admin_disarm", handle_parent_admin_disarm)
+    safe_register_service("parent_admin_cleanup_targets", handle_parent_admin_cleanup_targets)
+    safe_register_service("cleanup_target_button_entities", handle_cleanup_target_button_entities, schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA)
+    safe_register_service("launch", handle_launch, schema=LAUNCH_SCHEMA)
+    safe_register_service("launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
+    safe_register_service("clear_all", handle_clear_all)
+    safe_register_service("stand_down", handle_stand_down)
+    safe_register_service("set_armed", handle_set_armed, schema=BOOL_SCHEMA)
+    safe_register_service("set_parent_targets", handle_set_parent_targets, schema=BOOL_SCHEMA)
+    safe_register_service("enforce_now", handle_enforce_now)
+    safe_register_service("reload_config", handle_reload_config)
+    safe_register_service("adguard_config_status", handle_adguard_config_status)
+    safe_register_service("adguard_connection_test", handle_adguard_connection_test)
+    safe_register_service("debug_status", handle_debug_status)
+    safe_register_service("block_person", handle_block_person, schema=PERSON_SCHEMA)
+    safe_register_service("unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
+    safe_register_service("dashboard_keypress", handle_dashboard_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    safe_register_service("dashboard_backspace", handle_dashboard_backspace)
+    safe_register_service("dashboard_clear_pin", handle_dashboard_clear_pin)
+    safe_register_service("parent_admin_confirm", handle_parent_admin_confirm)
+    safe_register_service("parent_admin_cancel", handle_parent_admin_cancel)
+    safe_register_service("dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
+    safe_register_service("dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
+    safe_register_service("hash_pin", handle_hash_pin, schema=HASH_PIN_SCHEMA)
+    safe_register_service("auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA)
+    safe_register_service("config_audit_status", handle_config_audit_status, schema=CONFIG_AUDIT_SCHEMA)
+    safe_register_service("migrate_entity_ids", handle_migrate_entity_ids)
 
     async def periodic(now: datetime) -> None:
         today = datetime.now().date().isoformat()
@@ -1916,12 +2183,18 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             st()["last_launcher"] = ""
             st()["last_target"] = ""
             for person in conf()["people"]:
-                st()["blocked_until"][person] = None
+                set_blocked_until(person, None)
             await log_event("Daily reset complete.")
         await enforce_now()
         await update_entities()
         await save_state()
 
+    old_remove_interval = hass.data[DOMAIN].get("remove_interval")
+    if old_remove_interval:
+        try:
+            old_remove_interval()
+        except Exception:
+            LOGGER.exception("Family DEFCON failed to remove old periodic timer")
     hass.data[DOMAIN]["remove_interval"] = async_track_time_interval(hass, periodic, timedelta(minutes=1))
 
     if not st().get("dashboard_target"):
@@ -1939,11 +2212,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     ensure_dashboard_defaults()
 
-    for platform in PLATFORMS:
-        try:
-            await async_load_platform(hass, platform, DOMAIN, {}, config)
-        except Exception:
-            _LOGGER.exception("Family DEFCON failed to load %s platform", platform)
+    if not hass.data[DOMAIN].get("platforms_loaded"):
+        for platform in PLATFORMS:
+            try:
+                await async_load_platform(hass, platform, DOMAIN, {}, config)
+            except Exception:
+                _LOGGER.exception("Family DEFCON failed to load %s platform", platform)
+        hass.data[DOMAIN]["platforms_loaded"] = True
+    else:
+        _LOGGER.info("Family DEFCON platforms already loaded; skipped duplicate platform load.")
 
-    await async_register_parent_confirm_services(hass)
+    hass.data[DOMAIN]["setup_complete"] = True
     return True

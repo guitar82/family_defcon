@@ -170,20 +170,21 @@ cards:
     custom_fields:
       people: |
         [[[
-          const peopleSensor = states['sensor.family_defcon_dashboard_people'] || states['sensor.dashboard_people'];
-          const people = peopleSensor?.attributes?.people || [];
+          const peopleSensor = states['sensor.family_defcon_dashboard_people'];
+          const people = peopleSensor && peopleSensor.attributes && peopleSensor.attributes.people ? peopleSensor.attributes.people : [];
 
           if (!people.length) {
-            return `<div style="padding:14px; color:#ffca28; font-size:16px; text-align:center;">No people configured.<br><span style="font-size:12px; opacity:.65;">Check sensor.family_defcon_dashboard_people and run family_defcon.config_audit_status.</span></div>`;
+            return '<div style="padding:14px; color:#ffca28; font-size:16px; text-align:center;">No people configured.</div>';
           }
 
           return people.map((p) => {
-            const status = states[p.status_entity]?.state || 'unknown';
-            const mins = states[p.minutes_entity]?.state || '0';
-            const blocked = status === 'blocked';
+            const status = String(p.status || 'allowed').toLowerCase();
+            const minutes = Number(p.minutes_remaining || 0);
+            const blocked = p.blocked === true || status === 'blocked' || minutes > 0;
+
             const color = blocked ? '#ef5350' : '#66bb6a';
             const icon = blocked ? '🚫' : '✅';
-            const label = blocked ? `PAUSED — ${mins} min` : 'ONLINE';
+            const label = blocked ? (minutes > 0 ? 'PAUSED — ' + minutes + ' min' : 'PAUSED') : 'ALLOWED';
 
             let role = 'TARGET';
             if (p.is_parent_target) role = 'PARENT';

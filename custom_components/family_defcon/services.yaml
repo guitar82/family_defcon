@@ -214,3 +214,15 @@ parent_admin_confirm:
 parent_admin_cancel:
   name: Parent Admin Cancel
   description: Cancel the active parent admin confirmation session and clear PIN.
+
+adguard_config_status:
+  name: AdGuard Config Status
+  description: Report the active Family DEFCON AdGuard runtime configuration loaded from UI options.
+
+debug_status:
+  name: Debug Status
+  description: Create a persistent notification and last_event message with the active Family DEFCON runtime config status.
+
+adguard_connection_test:
+  name: AdGuard Connection Test
+  description: Test the active Family DEFCON AdGuard URL, credentials, and filtering status endpoint.

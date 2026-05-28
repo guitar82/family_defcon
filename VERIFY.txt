@@ -1,20 +1,21 @@
-Family DEFCON v5.8.30 Confirm Reload Safe verification
+Family DEFCON v1.0.9 Loader Config Fix verification
 Python compile: OK
 AST parse: OK
-manifest version 5.8.30: OK
-Module-level parent confirm service registrar added: OK
-Static parent PIN verifier added: OK
-async_setup_entry setup_complete reload path registers parent confirm/cancel: OK
-full async_setup path registers parent confirm/cancel: OK
-parent_admin_confirm registered in closure service scan: OK
-parent_admin_cancel registered in closure service scan: OK
-parent_admin_confirm services.yaml entry exists: OK
-parent_admin_cancel services.yaml entry exists: OK
-Dashboard CONFIRM calls family_defcon.parent_admin_confirm directly: OK
-Dashboard CANCEL calls family_defcon.parent_admin_cancel directly: OK
-Dashboard uses existing dashboard PIN/keypad: OK
-No old parent verify flow remains: OK
-No old parent_admin_pin dashboard dependency remains: OK
-No undefined parent base classes remain: OK
-No bare now() runtime bug: OK
-No known v5.9/v5.10 bad code carried over: OK
+manifest version 1.0.9: OK
+async_setup_entry no longer returns early and skips new service registration: OK
+Service registration is idempotent through safe_register_service: OK
+Required services safe-registered: OK
+Registered service scan count: 33
+AdGuard connection/config actions safe-registered: OK
+services.yaml includes AdGuard diagnostic actions: OK
+Periodic timer replacement guard added: OK
+Platform duplicate load guard added: OK
+Live blocked_until state preserved during setup rerun: OK
+UI option update listener re-runs setup: OK
+AdGuard URL normalizer still present: OK
+
+Expected after HACS/GitHub update and HA Core restart:
+family_defcon.adguard_config_status appears
+family_defcon.adguard_connection_test appears
+family_defcon.debug_status appears
+UI AdGuard config mapping is refreshed

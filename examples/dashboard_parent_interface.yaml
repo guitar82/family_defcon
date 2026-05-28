@@ -71,53 +71,6 @@ cards:
           `;
         ]]]
 
-  - type: custom:button-card
-    name: PARENT COMMAND INTERFACE
-    icon: mdi:shield-account
-    show_icon: true
-    show_name: true
-    tap_action:
-      action: none
-    triggers_update:
-      - sensor.family_defcon_last_event
-      - text.family_defcon_dashboard_pin
-    styles:
-      grid:
-        - grid-template-areas: '"i n" "i sub"'
-        - grid-template-columns: 30px 1fr
-        - grid-template-rows: min-content min-content
-      card:
-        - border-radius: 18px
-        - padding: 8px 12px
-        - background: "#0b1117"
-        - color: white
-        - border: 1px solid rgba(253,216,53,.45)
-        - min-height: 52px
-      icon:
-        - color: "#fdd835"
-        - width: 22px
-      name:
-        - justify-self: start
-        - color: "#fdd835"
-        - font-size: 14px
-        - font-weight: 900
-      custom_fields:
-        sub:
-          - justify-self: start
-          - font-size: 11px
-          - color: "#b0bec5"
-          - white-space: normal
-    custom_fields:
-      sub: |
-        [[[
-          const event = states['sensor.family_defcon_last_event']?.state || 'Enter parent PIN, confirm, then press a parent control.';
-          const lower = event.toLowerCase();
-
-          if (lower.includes('parent admin confirmed') || lower.includes('controls unlocked')) return `<span style="color:#69f0ae;">✅ ${event}</span>`;
-          if (lower.includes('rejected') || lower.includes('invalid') || lower.includes('pin required') || lower.includes('not a parent') || lower.includes('bad pin')) return `<span style="color:#ff8a80;">${event}</span>`;
-          return `<span>${event}</span>`;
-        ]]]
-
   - type: grid
     columns: 2
     square: false
