@@ -1689,7 +1689,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         provider = str(dns.get("provider", ""))
         enabled = bool(dns.get("enabled", False))
         mode = str(dns.get("enforcement_mode", ""))
-        version = "1.1.3"
+        version = "1.1.4"
 
         message = (
             f"Family DEFCON debug status v{version}: "
