@@ -1,0 +1,25 @@
+Family DEFCON v1.1.5 Target Button Label Fix verification
+Repository structure: OK
+Python compile: OK
+AST parse: OK
+YAML parse services/examples: OK
+manifest version 1.1.5: OK
+hacs.json filename family_defcon_v1_1_5.zip: OK
+services.yaml matches registered services: OK
+
+Target label fix:
+DashboardSelectTargetButton displays self.target_name: OK
+Stable unique_id/object_id preserved: OK
+_attr_has_entity_name disabled for target buttons: OK
+friendly_label/display_name attributes present: OK
+
+Regression checks:
+people_set defined before use: OK
+AdGuard diagnostic actions registered: OK
+parent confirm/cancel registered: OK
+No nested st()["adguard"] references: OK
+No bare LOGGER references: OK
+case-safe status attrs preserved: OK
+
+Expected result:
+Target buttons show configured target names instead of family_defcon_select_target_child_1 style labels.

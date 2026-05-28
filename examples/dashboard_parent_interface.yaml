@@ -1,0 +1,431 @@
+type: vertical-stack
+cards:
+  - type: custom:button-card
+    entity: sensor.family_defcon_level
+    name: FAMILY DEFCON
+    show_state: false
+    show_icon: false
+    tap_action:
+      action: none
+    triggers_update:
+      - sensor.family_defcon_level
+      - sensor.family_defcon_peace_status
+      - sensor.family_defcon_last_event
+      - switch.family_defcon_command_system_armed
+      - binary_sensor.family_defcon_mutual_wifi_destruction
+      - text.family_defcon_dashboard_pin
+    styles:
+      card:
+        - padding: 18px
+        - border-radius: 24px
+        - border: 1px solid rgba(255,255,255,.16)
+        - box-shadow: 0 8px 24px rgba(0,0,0,.35)
+        - background: |
+            [[[
+              const level = Number(states['sensor.family_defcon_level']?.state || 5);
+              if (level <= 1) return 'radial-gradient(circle at top left, #ff5252 0%, #3b0000 48%, #090909 100%)';
+              if (level <= 2) return 'radial-gradient(circle at top left, #ff7043 0%, #7f0000 48%, #090909 100%)';
+              if (level === 3) return 'radial-gradient(circle at top left, #ffb74d 0%, #6d3300 48%, #090909 100%)';
+              if (level === 4) return 'radial-gradient(circle at top left, #fff176 0%, #6a5600 48%, #090909 100%)';
+              return 'radial-gradient(circle at top left, #69f0ae 0%, #0b4d22 48%, #090909 100%)';
+            ]]]
+        - color: white
+    custom_fields:
+      main: |
+        [[[
+          const level = Number(states['sensor.family_defcon_level']?.state || 5);
+          const peace = states['sensor.family_defcon_peace_status']?.state || 'Unknown';
+          const event = states['sensor.family_defcon_last_event']?.state || 'System initialized.';
+          const lower = event.toLowerCase();
+          const armed = states['switch.family_defcon_command_system_armed']?.state === 'on';
+          const mutual = states['binary_sensor.family_defcon_mutual_wifi_destruction']?.state === 'on';
+          const parentConfirmed = lower.includes('parent admin confirmed') || lower.includes('controls unlocked');
+
+          let icon = '🟢';
+          let label = 'PEACEFUL STATUS';
+          let accent = '#69f0ae';
+
+          if (mutual || level <= 1) { icon = '☢️'; label = 'MUTUAL WIFI DESTRUCTION'; accent = '#ff8a80'; }
+          else if (level <= 2) { icon = '🚨'; label = 'RED ALERT'; accent = '#ffab91'; }
+          else if (level === 3) { icon = '⚠️'; label = 'ESCALATION'; accent = '#ffd180'; }
+          else if (level === 4) { icon = '🟡'; label = 'WATCH CONDITION'; accent = '#fff59d'; }
+
+          return `
+            <div style="display:grid; grid-template-columns:70px minmax(0,1fr); gap:14px; align-items:center;">
+              <div style="font-size:50px;text-align:center;">${icon}</div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                  <div style="font-size:34px;font-weight:950;letter-spacing:2px;">DEFCON ${level}</div>
+                  <div style="font-size:12px;font-weight:900;padding:6px 10px;border-radius:999px;background:${armed ? 'rgba(105,240,174,.16)' : 'rgba(255,255,255,.12)'};color:${armed ? '#69f0ae' : '#cfd8dc'};">
+                    ${armed ? 'ARMED' : 'DISARMED'}
+                  </div>
+                </div>
+                <div style="font-size:16px;font-weight:900;color:${accent};letter-spacing:1px;">${label}</div>
+                <div style="font-size:13px;margin-top:5px;opacity:.9;">Peace Status: <b>${peace}</b></div>
+                <div style="font-size:13px;margin-top:5px;color:${parentConfirmed ? '#69f0ae' : '#b0bec5'};">
+                  Parent Admin: <b>${parentConfirmed ? 'CONFIRMED' : 'NOT CONFIRMED'}</b>
+                </div>
+                <div style="font-size:13px;margin-top:5px;opacity:.82;white-space:normal;line-height:1.35;">${event}</div>
+              </div>
+            </div>
+          `;
+        ]]]
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: text.family_defcon_dashboard_pin
+        name: PIN
+        show_icon: false
+        show_state: false
+        triggers_update: all
+        tap_action:
+          action: none
+        styles:
+          grid:
+            - grid-template-areas: '"n" "pin"'
+            - grid-template-rows: min-content 1fr
+            - grid-template-columns: 1fr
+          card:
+            - height: 78px
+            - border-radius: 18px
+            - background: "#101820"
+            - color: white
+            - border: 1px solid rgba(253,216,53,.35)
+            - padding: 10px
+          name:
+            - font-size: 12px
+            - color: "#fdd835"
+            - font-weight: 900
+            - justify-self: center
+          custom_fields:
+            pin:
+              - justify-self: center
+              - align-self: center
+        custom_fields:
+          pin: |
+            [[[
+              const pin = states['text.family_defcon_dashboard_pin']?.state || '';
+              const length = Math.min(pin.length, 4);
+              const masked = length ? '●'.repeat(length) : 'ENTER PIN';
+              return `<div style="text-align:center;">
+                <div style="font-size:${length ? '26px' : '18px'};font-weight:950;letter-spacing:${length ? '7px' : '1px'};color:#ffffff;white-space:nowrap;">${masked}</div>
+                <div style="font-size:10px;color:#90a4ae;margin-top:2px;letter-spacing:1px;">PARENT PIN</div>
+              </div>`;
+            ]]]
+
+      - type: custom:button-card
+        entity: sensor.family_defcon_last_event
+        name: CONFIRM STATUS
+        show_icon: false
+        show_state: false
+        triggers_update:
+          - sensor.family_defcon_last_event
+        tap_action:
+          action: none
+        styles:
+          grid:
+            - grid-template-areas: '"n" "status"'
+            - grid-template-rows: min-content 1fr
+            - grid-template-columns: 1fr
+          card:
+            - height: 78px
+            - border-radius: 18px
+            - background: |
+                [[[
+                  const event = states['sensor.family_defcon_last_event']?.state || '';
+                  const lower = event.toLowerCase();
+                  if (lower.includes('parent admin confirmed') || lower.includes('controls unlocked')) return 'linear-gradient(135deg, #003b12, #69f0ae)';
+                  if (lower.includes('rejected') || lower.includes('invalid') || lower.includes('pin required') || lower.includes('not a parent') || lower.includes('bad pin')) return 'linear-gradient(135deg, #4a0000, #ff8a80)';
+                  return '#101820';
+                ]]]
+            - color: |
+                [[[
+                  const event = states['sensor.family_defcon_last_event']?.state || '';
+                  const lower = event.toLowerCase();
+                  return lower.includes('parent admin confirmed') || lower.includes('controls unlocked') || lower.includes('rejected') || lower.includes('invalid') || lower.includes('pin required') || lower.includes('not a parent') || lower.includes('bad pin') ? '#111111' : '#ffffff';
+                ]]]
+            - border: 1px solid rgba(255,255,255,.12)
+            - padding: 10px
+          name:
+            - font-size: 12px
+            - color: "#b0bec5"
+            - font-weight: 900
+            - justify-self: center
+          custom_fields:
+            status:
+              - justify-self: center
+              - align-self: center
+              - text-align: center
+        custom_fields:
+          status: |
+            [[[
+              const event = states['sensor.family_defcon_last_event']?.state || 'Enter parent PIN.';
+              const lower = event.toLowerCase();
+              if (lower.includes('parent admin confirmed') || lower.includes('controls unlocked')) {
+                return `<div style="font-size:13px;font-weight:950;">✅ CONFIRMED</div><div style="font-size:11px;margin-top:3px;">Controls unlocked</div>`;
+              }
+              return `<div style="font-size:12px;line-height:1.25;opacity:.9;white-space:normal;">${event}</div>`;
+            ]]]
+
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: custom:button-card
+        name: CONFIRM
+        icon: mdi:shield-check
+        tap_action:
+          action: call-service
+          service: family_defcon.parent_admin_confirm
+        triggers_update:
+          - text.family_defcon_dashboard_pin
+          - sensor.family_defcon_last_event
+        styles:
+          card:
+            - height: 58px
+            - border-radius: 18px
+            - background: |
+                [[[
+                  const pin = states['text.family_defcon_dashboard_pin']?.state || '';
+                  const event = states['sensor.family_defcon_last_event']?.state || '';
+                  const lower = event.toLowerCase();
+
+                  if (lower.includes('parent admin confirmed') || lower.includes('controls unlocked')) return 'linear-gradient(135deg, #003b12, #69f0ae)';
+                  if (lower.includes('rejected') || lower.includes('invalid') || lower.includes('pin required') || lower.includes('not a parent') || lower.includes('bad pin')) return 'linear-gradient(135deg, #7f0000, #ff8a80)';
+                  if (pin.length > 0) return 'linear-gradient(135deg, #fdd835, #fff176)';
+                  return '#5f5100';
+                ]]]
+            - color: "#111111"
+            - font-weight: 950
+          icon:
+            - color: "#111111"
+            - width: 28px
+          name:
+            - font-size: 14px
+            - font-weight: 950
+
+      - type: custom:button-card
+        name: CANCEL
+        icon: mdi:cancel
+        tap_action:
+          action: call-service
+          service: family_defcon.parent_admin_cancel
+        styles:
+          card:
+            - height: 58px
+            - border-radius: 18px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+          icon:
+            - width: 28px
+            - color: "#cfd8dc"
+          name:
+            - font-size: 14px
+
+      - type: custom:button-card
+        name: CLEAR PIN
+        icon: mdi:backspace-outline
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_clear_pin
+        styles:
+          card:
+            - height: 58px
+            - border-radius: 18px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+          icon:
+            - color: "#cfd8dc"
+            - width: 28px
+          name:
+            - font-size: 14px
+
+  - type: grid
+    columns: 5
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: button.parent_admin_arm
+        name: ARM
+        icon: mdi:shield-lock
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.parent_admin_arm
+        styles: &admin_button_style
+          card:
+            - height: 62px
+            - border-radius: 16px
+            - background: "#101820"
+            - color: white
+            - font-weight: 950
+            - border: 1px solid rgba(253,216,53,.25)
+          icon:
+            - color: "#fdd835"
+            - width: 24px
+          name:
+            - font-size: 12px
+            - font-weight: 950
+      - type: custom:button-card
+        entity: button.parent_admin_disarm
+        name: DISARM
+        icon: mdi:shield-off
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.parent_admin_disarm
+        styles: *admin_button_style
+      - type: custom:button-card
+        entity: button.parent_admin_clear_all
+        name: CLEAR ALL
+        icon: mdi:restart
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.parent_admin_clear_all
+        styles: *admin_button_style
+      - type: custom:button-card
+        entity: button.parent_admin_enforce_now
+        name: ENFORCE
+        icon: mdi:shield-sync
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.parent_admin_enforce_now
+        styles: *admin_button_style
+      - type: custom:button-card
+        entity: button.parent_admin_cleanup_targets
+        name: CLEANUP
+        icon: mdi:broom
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.parent_admin_cleanup_targets
+        styles: *admin_button_style
+
+  - type: grid
+    columns: 3
+    square: false
+    cards:
+      - type: custom:button-card
+        name: "1"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "1"
+        styles: &keypad_style
+          card:
+            - height: 46px
+            - border-radius: 14px
+            - background: "#101820"
+            - color: white
+            - font-weight: 950
+            - border: 1px solid rgba(255,255,255,.12)
+          name:
+            - font-size: 20px
+            - font-weight: 950
+      - type: custom:button-card
+        name: "2"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "2"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "3"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "3"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "4"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "4"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "5"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "5"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "6"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "6"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "7"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "7"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "8"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "8"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: "9"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "9"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: CLEAR
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_clear_pin
+        styles: &keypad_control_style
+          card:
+            - height: 46px
+            - border-radius: 14px
+            - background: "#263238"
+            - color: white
+            - font-weight: 950
+            - border: 1px solid rgba(255,255,255,.12)
+          name:
+            - font-size: 13px
+            - font-weight: 950
+      - type: custom:button-card
+        name: "0"
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_keypress
+          data:
+            digit: "0"
+        styles: *keypad_style
+      - type: custom:button-card
+        name: BACK
+        tap_action:
+          action: call-service
+          service: family_defcon.dashboard_backspace
+        styles: *keypad_control_style
