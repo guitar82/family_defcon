@@ -1,0 +1,46 @@
+- alias: Family DEFCON Launch Event Announcement
+  description: Announce Family DEFCON launches from the native event.
+  mode: queued
+  trigger:
+  - platform: event
+    event_type: family_defcon_launch
+  action:
+  - service: media_player.play_media
+    target:
+      entity_id: media_player.kitchen_speaker
+    data:
+      media_content_id: media-source://media_source/local/defcon_launch.mp3
+      media_content_type: audio/mpeg
+  - delay: 00:00:02
+  - service: tts.cloud_say
+    target:
+      entity_id: media_player.kitchen_speaker
+    data:
+      message: Family DEFCON {{ trigger.event.data.defcon_level }}. {{ trigger.event.data.launcher
+        }} launched at {{ trigger.event.data.target }}. {{ trigger.event.data.target
+        }} receives {{ trigger.event.data.minutes }} minutes.
+- alias: Family DEFCON Bad PIN Warning
+  description: Play a warning when the dashboard gets a bad PIN.
+  mode: single
+  trigger:
+  - platform: event
+    event_type: family_defcon_bad_pin
+  action:
+  - service: tts.cloud_say
+    target:
+      entity_id: media_player.kitchen_speaker
+    data:
+      message: Invalid Family DEFCON PIN. Attempt {{ trigger.event.data.attempts }}
+        of {{ trigger.event.data.max_attempts }}.
+- alias: Family DEFCON Mutual Destruction Announcement
+  description: Announce mutual WiFi destruction.
+  mode: single
+  trigger:
+  - platform: event
+    event_type: family_defcon_mutual_destruction
+  action:
+  - service: tts.cloud_say
+    target:
+      entity_id: media_player.kitchen_speaker
+    data:
+      message: Warning. Mutual WiFi destruction has been activated.

@@ -1,0 +1,44 @@
+Family DEFCON v1.1.3 Audited Release verification
+Package structure: OK
+Python compile: OK
+AST parse: OK
+YAML parse services/examples: OK
+manifest version 1.1.3: OK
+hacs version 1.1.3: OK
+manifest/hacs iot_class aligned: OK
+
+Setup/config checks:
+people_set defined before use: OK
+json import present: OK
+secrets.yaml runtime loading present: OK
+config flow options handler present: OK
+AdGuard setup/options UI labels present: OK
+
+Service/action checks:
+Registered services: 33
+services.yaml matches registered services: OK
+All handlers exist: OK
+All schemas exist: OK
+parent_admin_confirm/cancel registered: OK
+adguard_config_status registered: OK
+adguard_connection_test registered: OK
+
+AdGuard checks:
+Home Assistant AdGuard integration hybrid discovery present: OK
+AdGuard URL normalizer present: OK
+AdGuard credential resolver supports secrets or literal values: OK
+AdGuard API calls use Home Assistant shared aiohttp client: OK
+Direct AdGuard API rule enforcement preserved: OK
+No nested st()["adguard"] references: OK
+
+Status/dashboard checks:
+case-safe blocked status helpers present: OK
+dashboard people direct blocked/status/minutes attributes present: OK
+
+Loader/overwrite checks:
+safe_register_service loader fix present: OK
+async_setup_entry reruns setup: OK
+platform duplicate guard present: OK
+periodic timer replacement guard present: OK
+overwrite installer included and references v1.1.3 ZIP: OK
+No duplicate literal unique IDs found: OK
