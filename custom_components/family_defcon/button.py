@@ -46,6 +46,7 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         DashboardConfirmButton(hass),
         DashboardLaunchButton(hass),
         DashboardCancelButton(hass),
+        ParentAdminVerifyButton(hass),
         ParentAdminClearAllButton(hass),
         ParentAdminEnforceNowButton(hass),
         ParentAdminArmButton(hass),
@@ -313,6 +314,15 @@ class ParentAdminServiceButton(BaseDashboardButton):
 
     async def async_press(self) -> None:
         await self.hass.services.async_call(DOMAIN, self.service_name, {}, blocking=False)
+
+
+
+class ParentAdminVerifyButton(ParentAdminServiceButton):
+    _attr_name = "Parent Admin Verify"
+    _attr_unique_id = "family_defcon_parent_admin_verify"
+    _attr_suggested_object_id = "family_defcon_parent_admin_verify"
+    service_name = "parent_admin_verify"
+    icon_name = "mdi:shield-check"
 
 
 class ParentAdminClearAllButton(ParentAdminServiceButton):

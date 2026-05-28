@@ -1,5 +1,53 @@
 # Family DEFCON Release Notes
 
+## v5.8.23
+
+- Final audit pass for parent verify and parent dashboard.
+- Replaced all parent dashboard examples with the same working trimmed-entity dashboard.
+- Confirmed parent verify uses `datetime.now()` and existing dashboard PIN.
+- Confirmed service registration, button entity class, services.yaml, and dashboard entity IDs agree.
+- Fixed example automation YAML multi-document formatting into a YAML list.
+
+## v5.8.22
+
+- Fixed parent verify runtime bug by replacing undefined `now()` calls with `datetime.now()`.
+- Renamed parent verify button to trim cleanly as `button.parent_admin_verify`.
+- Verified parent verify service registration and dashboard button press path.
+- Added `examples/dashboard_parent_interface_working.yaml`.
+
+## v5.8.21
+
+- Fixed parent verify registration path.
+- Updated parent dashboard to press `button.family_defcon_parent_admin_verify` instead of directly calling the service.
+- Preserved 60 second parent verification window and existing dashboard keypad.
+
+## v5.8.20
+
+- Added explicit parent admin PIN verification step.
+- Added `family_defcon.parent_admin_verify` service and `button.family_defcon_parent_admin_verify`.
+- Parent admin verification lasts 60 seconds.
+- Parent admin controls can now be used after pressing VERIFY PARENT PIN.
+- Parent dashboard uses the existing working dashboard keypad.
+
+## v5.8.19
+
+- Parent admin actions now use the existing dashboard PIN as the primary PIN source.
+- Parent dashboard reuses the existing working dashboard keypad services.
+- Separate parent keypad services are no longer required for the recommended parent dashboard.
+- Parent admin actions still require the entered PIN to belong to a configured parent role user.
+
+## v5.8.18
+
+- Fixed parent admin service registration so `family_defcon.parent_admin_keypress` and related services actually load.
+- Preserved parent admin PIN keypad, parent role validation, hidden PIN state, and parent dashboard example.
+
+## v5.8.17
+
+- Added parent admin keypad services.
+- Updated parent interface dashboard with launcher-style DEFCON status card.
+- Parent interface now has PIN display, keypad, admin controls, and status summary.
+- Preserved parent role PIN validation from v5.8.16.
+
 ## v5.8.16
 
 - Added parent/admin hidden PIN entity.

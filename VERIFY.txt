@@ -1,21 +1,19 @@
-Family DEFCON v5.8.16 Parent PIN Admin Controls verification
-Base package: v5.8.15 target button entity name fix
-Python compile: OK
-manifest version 5.8.16: OK
-Parent admin PIN text entity added: OK
-Parent admin PIN entity state is masked: OK
-Parent admin PIN is never persisted: OK
-Parent admin role verification helper added: OK
-Parent admin services added: OK
-Parent admin button entities added: OK
-Parent interface dashboard example added: OK
-Child PINs are rejected for parent admin actions: OK
-Dynamic target fixes preserved: OK
-Cleanup service preserved: OK
-Hidden launch PIN state preserved: OK
-Instant SHA256 PIN verification preserved: OK
-Native HA events preserved: OK
-No v5.9 dashboard auth sensor code carried over: OK
-No v5.9 dashboard_confirm_pin service carried over: OK
-No v5.10 startup fallback code carried over: OK
-Hardcoded old personal-name hits in non-legacy package files: None
+Family DEFCON v5.8.23 Final Parent Audit verification
+manifest v5.8.23: OK
+python compile: OK
+no bare now: OK
+verify uses datetime: OK
+verify handler: OK
+verify service registered: OK
+verify yaml: OK
+verify button: OK
+button platform adds verify: OK
+parent reads dashboard pin: OK
+working dashboard trimmed verify: OK
+working dashboard trimmed admin: OK
+working dashboard keypad: OK
+no old parent keypad in working dashboard: OK
+all registered services in yaml: OK
+no v59/510: OK
+All YAML examples parse: OK
+All parent dashboard examples use trimmed working entity IDs: OK

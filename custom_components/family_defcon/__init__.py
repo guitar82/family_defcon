@@ -634,6 +634,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         "adguard_managed_rule_count": int(stored.get("adguard_managed_rule_count", 0)),
         "dashboard_pin": "",
         "parent_admin_pin": "",
+        "parent_admin_verified_until": None,
+        "parent_admin_verified_by": "",
         "dashboard_target": str(stored.get("dashboard_target", "")),
         # Dashboard confirmation is intentionally never restored after restart.
         "dashboard_confirm": False,
@@ -663,6 +665,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         # The PIN is only valid while it is held in integration memory.
         payload["dashboard_pin"] = ""
         payload["parent_admin_pin"] = ""
+        payload["parent_admin_verified_until"] = None
+        payload["parent_admin_verified_by"] = ""
         payload["dashboard_confirm"] = False
 
         payload["blocked_until"] = {
@@ -726,7 +730,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def verify_parent_admin_pin(action_name: str) -> tuple[bool, str]:
         """Validate the parent admin PIN currently held in memory."""
-        pin = str(st().get("parent_admin_pin", "") or "")
+        # Use the existing dashboard PIN keypad by default.
+        # parent_admin_pin is kept as a fallback for older dashboards, but the recommended
+        # parent interface uses text.family_defcon_dashboard_pin and family_defcon.dashboard_keypress.
+        pin = str(st().get("dashboard_pin", "") or st().get("parent_admin_pin", "") or "")
         if not pin:
             message = f"Parent admin action rejected. PIN required for {action_name}."
             await log_event(message)
@@ -754,7 +761,48 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     async def clear_parent_admin_pin() -> None:
         st()["parent_admin_pin"] = ""
+        st()["dashboard_pin"] = ""
+        st()["dashboard_confirm"] = False
         await update_entities()
+
+    def parent_admin_is_verified() -> tuple[bool, str]:
+        verified_until = st().get("parent_admin_verified_until")
+        verified_by = str(st().get("parent_admin_verified_by", "") or "")
+        if isinstance(verified_until, datetime) and verified_until > datetime.now():
+            return True, verified_by
+        st()["parent_admin_verified_until"] = None
+        st()["parent_admin_verified_by"] = ""
+        return False, ""
+
+    async def confirm_parent_admin_pin(action_name: str = "verify_parent_pin") -> tuple[bool, str]:
+        ok, parent = await verify_parent_admin_pin(action_name)
+        if not ok:
+            st()["parent_admin_verified_until"] = None
+            st()["parent_admin_verified_by"] = ""
+            await clear_parent_admin_pin()
+            return False, parent
+
+        st()["parent_admin_verified_until"] = datetime.datetime.now() + timedelta(seconds=60)
+        st()["parent_admin_verified_by"] = parent
+        await clear_parent_admin_pin()
+        message = f"Parent admin verified for 60 seconds. Approved by {parent}."
+        await log_event(message)
+        fire_family_event(
+            "parent_admin_verified",
+            parent=parent,
+            expires_in_seconds=60,
+            message=message,
+        )
+        await update_entities()
+        return True, parent
+
+    async def require_parent_admin(action_name: str) -> tuple[bool, str]:
+        verified, parent = parent_admin_is_verified()
+        if verified:
+            return True, parent
+
+        # Backward compatible path: if no prior verification exists, validate the currently entered PIN.
+        return await confirm_parent_admin_pin(action_name)
 
     def valid_targets() -> list[str]:
         if st()["allow_parent_targets"]:
@@ -1324,6 +1372,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         st()["dashboard_pin"] = ""
         st()["parent_admin_pin"] = ""
+        st()["parent_admin_verified_until"] = None
+        st()["parent_admin_verified_by"] = ""
         st()["dashboard_confirm"] = False
 
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -1593,8 +1643,27 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             len(auto_failed),
         )
 
+    async def handle_parent_admin_keypress(call: ServiceCall) -> None:
+        digit = str(call.data.get("digit", ""))[:1]
+        if digit.isdigit():
+            current = str(st().get("parent_admin_pin", ""))
+            st()["parent_admin_pin"] = (current + digit)[:4]
+            await update_entities()
+
+    async def handle_parent_admin_backspace(call: ServiceCall) -> None:
+        current = str(st().get("parent_admin_pin", ""))
+        st()["parent_admin_pin"] = current[:-1]
+        await update_entities()
+
+    async def handle_parent_admin_clear_pin(call: ServiceCall) -> None:
+        st()["parent_admin_pin"] = ""
+        await update_entities()
+
+    async def handle_parent_admin_verify(call: ServiceCall) -> None:
+        await confirm_parent_admin_pin("verify_parent_pin")
+
     async def handle_parent_admin_clear_all(call: ServiceCall) -> None:
-        ok, parent = await verify_parent_admin_pin("clear_all")
+        ok, parent = await require_parent_admin("clear_all")
         if not ok:
             await clear_parent_admin_pin()
             return
@@ -1605,7 +1674,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         fire_family_event("parent_admin_action", action="clear_all", parent=parent, message=message)
 
     async def handle_parent_admin_enforce_now(call: ServiceCall) -> None:
-        ok, parent = await verify_parent_admin_pin("enforce_now")
+        ok, parent = await require_parent_admin("enforce_now")
         if not ok:
             await clear_parent_admin_pin()
             return
@@ -1616,7 +1685,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         fire_family_event("parent_admin_action", action="enforce_now", parent=parent, message=message)
 
     async def handle_parent_admin_arm(call: ServiceCall) -> None:
-        ok, parent = await verify_parent_admin_pin("arm")
+        ok, parent = await require_parent_admin("arm")
         if not ok:
             await clear_parent_admin_pin()
             return
@@ -1628,7 +1697,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await update_entities()
 
     async def handle_parent_admin_disarm(call: ServiceCall) -> None:
-        ok, parent = await verify_parent_admin_pin("disarm")
+        ok, parent = await require_parent_admin("disarm")
         if not ok:
             await clear_parent_admin_pin()
             return
@@ -1640,7 +1709,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await update_entities()
 
     async def handle_parent_admin_cleanup_targets(call: ServiceCall) -> None:
-        ok, parent = await verify_parent_admin_pin("cleanup_targets")
+        ok, parent = await require_parent_admin("cleanup_targets")
         if not ok:
             await clear_parent_admin_pin()
             return
@@ -1671,6 +1740,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         )
         await update_entities()
 
+    hass.services.async_register(DOMAIN, "parent_admin_keypress", handle_parent_admin_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    hass.services.async_register(DOMAIN, "parent_admin_backspace", handle_parent_admin_backspace)
+    hass.services.async_register(DOMAIN, "parent_admin_clear_pin", handle_parent_admin_clear_pin)
+    hass.services.async_register(DOMAIN, "parent_admin_verify", handle_parent_admin_verify)
     hass.services.async_register(DOMAIN, "parent_admin_clear_all", handle_parent_admin_clear_all)
     hass.services.async_register(DOMAIN, "parent_admin_enforce_now", handle_parent_admin_enforce_now)
     hass.services.async_register(DOMAIN, "parent_admin_arm", handle_parent_admin_arm)

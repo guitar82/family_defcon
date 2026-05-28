@@ -543,3 +543,184 @@ examples/dashboard_parent_interface.yaml
 ```
 
 The parent admin PIN is masked as entity state and is never persisted to storage.
+
+
+## v5.8.17 Parent Interface Keypad
+
+v5.8.17 adds keypad services for the parent interface and updates the parent dashboard.
+
+New services:
+
+```text
+family_defcon.parent_admin_keypress
+family_defcon.parent_admin_backspace
+family_defcon.parent_admin_clear_pin
+```
+
+The parent dashboard now includes:
+
+```text
+Launcher-style DEFCON status card
+Parent PIN display
+Parent PIN keypad
+PIN-protected parent control buttons
+Status summary
+```
+
+Updated example:
+
+```text
+examples/dashboard_parent_interface.yaml
+```
+
+
+## v5.8.18 Parent Admin Service Registration Fix
+
+v5.8.18 fixes service registration for parent admin controls.
+
+This makes these actions available in Home Assistant:
+
+```text
+family_defcon.parent_admin_keypress
+family_defcon.parent_admin_backspace
+family_defcon.parent_admin_clear_pin
+family_defcon.parent_admin_arm
+family_defcon.parent_admin_disarm
+family_defcon.parent_admin_clear_all
+family_defcon.parent_admin_enforce_now
+family_defcon.parent_admin_cleanup_targets
+```
+
+Install the package and restart Home Assistant Core.
+
+
+## v5.8.19 Parent Uses Existing Keypad
+
+v5.8.19 simplifies the parent dashboard by reusing the existing working dashboard keypad.
+
+Parent dashboard now uses:
+
+```text
+text.family_defcon_dashboard_pin
+family_defcon.dashboard_keypress
+family_defcon.dashboard_backspace
+family_defcon.dashboard_clear_pin
+```
+
+Parent admin actions verify that the entered dashboard PIN belongs to a configured user with role `parent`.
+
+This avoids needing separate parent keypad services.
+
+Updated examples:
+
+```text
+examples/dashboard_parent_interface.yaml
+examples/dashboard_parent_interface_existing_keypad.yaml
+```
+
+
+## v5.8.20 Parent PIN Verify Step
+
+v5.8.20 adds an explicit parent PIN verification step.
+
+Flow:
+
+```text
+Enter PIN with the existing dashboard keypad
+Press VERIFY PARENT PIN
+Backend validates the PIN belongs to a parent role user
+Parent admin is verified for 60 seconds
+Press Clear All / Enforce / Arm / Disarm / Cleanup
+```
+
+New action and button:
+
+```text
+family_defcon.parent_admin_verify
+button.family_defcon_parent_admin_verify
+```
+
+Updated dashboard:
+
+```text
+examples/dashboard_parent_interface_with_verify.yaml
+```
+
+
+## v5.8.21 Parent Verify Button Fix
+
+v5.8.21 registers the parent verify action and updates the dashboard to press the verify button entity.
+
+Use this dashboard flow:
+
+```text
+Enter PIN
+Press VERIFY PARENT PIN
+Use parent controls within 60 seconds
+```
+
+The dashboard calls:
+
+```text
+button.press -> button.family_defcon_parent_admin_verify
+```
+
+instead of directly calling `family_defcon.parent_admin_verify`.
+
+
+## v5.8.22 Verified Parent Fix
+
+v5.8.22 fixes the parent verify runtime bug and normalizes the verify button name.
+
+Fixes:
+
+```text
+Replaced undefined now() calls with datetime.now()
+Verify button name now trims to button.parent_admin_verify
+Parent verify service registration verified
+Parent admin actions use the existing dashboard PIN first
+Updated working parent dashboard example
+```
+
+Use:
+
+```text
+examples/dashboard_parent_interface_working.yaml
+```
+
+
+## v5.8.23 Final Parent Audit
+
+Use this parent dashboard only:
+
+```text
+examples/dashboard_parent_interface_working.yaml
+```
+
+The parent dashboard intentionally uses the existing working launch keypad:
+
+```text
+text.family_defcon_dashboard_pin
+family_defcon.dashboard_keypress
+family_defcon.dashboard_backspace
+family_defcon.dashboard_clear_pin
+```
+
+It uses trimmed parent admin button entity IDs, matching Home Assistant behavior on the current install:
+
+```text
+button.parent_admin_verify
+button.parent_admin_arm
+button.parent_admin_disarm
+button.parent_admin_clear_all
+button.parent_admin_enforce_now
+button.parent_admin_cleanup_targets
+```
+
+Flow:
+
+```text
+Enter parent PIN
+Press VERIFY PARENT PIN
+Use parent controls within 60 seconds
+```

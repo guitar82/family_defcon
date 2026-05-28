@@ -186,3 +186,26 @@ parent_admin_disarm:
 parent_admin_cleanup_targets:
   name: Parent Admin Cleanup Targets
   description: Clean stale dynamic target button entities after validating the hidden parent admin PIN.
+
+parent_admin_keypress:
+  name: Parent Admin Keypress
+  description: Add one digit to the hidden parent admin PIN.
+  fields:
+    digit:
+      name: Digit
+      description: Single PIN digit.
+      required: true
+      selector:
+        text:
+
+parent_admin_backspace:
+  name: Parent Admin Backspace
+  description: Remove the last digit from the hidden parent admin PIN.
+
+parent_admin_clear_pin:
+  name: Parent Admin Clear PIN
+  description: Clear the hidden parent admin PIN.
+
+parent_admin_verify:
+  name: Parent Admin Verify
+  description: Verify the existing dashboard PIN as a parent admin PIN for 60 seconds.
