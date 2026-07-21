@@ -232,7 +232,7 @@ Example:
 button.family_defcon_select_target_child_1
 ```
 
-The button name shown in the dashboard should be the configured label, such as `Henry`, `Marc`, `Maggie`, `Mom`, or `Dad`.
+The button name shown in the dashboard should be the configured label, such as `Bart`, `Lisa`, `Maggie`, `Mom`, or `Dad`.
 
 ### Basic dashboard example
 
