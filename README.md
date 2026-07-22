@@ -369,17 +369,18 @@ Diagnostic results are written to the Home Assistant log, Family DEFCON event st
 
 ## Updating configuration
 
-Most existing settings are refreshed when options are saved.
+Most settings are refreshed when options are saved, including generated dashboard
+target buttons for newly added or renamed dashboard targets.
 
-Because version 1.1.5 still uses legacy entity-platform loading, restart Home Assistant after:
+Because this integration still uses legacy entity-platform loading, stale entity
+registry entries from removed or renamed-away dashboard targets may remain until
+you clean them up. If old unavailable buttons remain, run
+`family_defcon.cleanup_target_button_entities`.
 
-- Adding a person
-- Removing a person
-- Renaming a person
-- Adding or removing dashboard targets
-- Changing generated target-button structure
+Restart Home Assistant after changing generated target-button structure or if
+you want Home Assistant to fully unload stale legacy entities.
 
-This ensures dynamically generated entities are recreated cleanly.
+New target buttons no longer require a clean Home Assistant startup to appear.
 
 ## Cleaning stale target buttons
 
@@ -399,6 +400,11 @@ data:
 ```
 
 Restart Home Assistant afterward.
+
+If you intentionally want to remove current generated Family DEFCON target-button
+registry entries too, set `remove_family_defcon_target_buttons: true`. Use that
+when cleaning up renamed-away `button.family_defcon_select_target_*` entities.
+The active buttons will be recreated after config/options reload or restart.
 
 The current generated target buttons should use:
 
@@ -431,11 +437,13 @@ button.family_defcon_select_target_*
 
 ### New target buttons do not appear
 
-Restart Home Assistant after adding or renaming people or changing dashboard targets.
+Save the Family DEFCON options again or run `family_defcon.reload_config`.
+Generated target buttons are refreshed after options/config reloads.
 
 ### Duplicate or stale buttons remain
 
-Run `family_defcon.cleanup_target_button_entities`, then restart Home Assistant.
+Run `family_defcon.cleanup_target_button_entities`. Restart Home Assistant if
+you want Home Assistant to fully unload stale legacy entities from memory.
 
 ### Services are missing after an update
 

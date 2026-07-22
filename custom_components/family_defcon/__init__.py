@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_PARENTS,
     STORAGE_KEY,
     STORAGE_VERSION,
+    SIGNAL_TARGET_BUTTONS_UPDATE,
     SIGNAL_UPDATE,
 )
 
@@ -169,18 +170,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
         """Apply UI option changes to the active config when possible.
 
-        Existing entity platforms are not fully unloaded by this legacy platform setup,
-        so newly added people or dynamic target buttons still require a Home Assistant restart.
-        Existing config values, PIN hashes, AdGuard client names, targets, penalties, and
-        station settings are refreshed through the reload_config service.
+        Existing config values, PIN hashes, AdGuard client names, targets, penalties,
+        station settings, and generated dashboard target buttons are refreshed through
+        the idempotent setup/reload path.
         """
         hass.data.setdefault(DOMAIN, {})["config_entry"] = updated_entry
         if hass.data[DOMAIN].get("setup_complete"):
-            _LOGGER.info("Family DEFCON options updated. Re-running setup to apply services and active config. Restart Home Assistant if people or dashboard targets were added or removed.")
+            _LOGGER.info("Family DEFCON options updated. Re-running setup to apply services, active config, and generated target buttons.")
             await async_setup(hass, {})
             persistent_notification.async_create(
                 hass,
-                "Family DEFCON settings were saved. Active config was reloaded. If you added, removed, or renamed people or dashboard targets, restart Home Assistant so generated entities are recreated.",
+                "Family DEFCON settings were saved. Active config was reloaded and generated dashboard target buttons were refreshed.",
                 title="Family DEFCON settings updated",
                 notification_id="family_defcon_options_updated",
             )
@@ -200,7 +200,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     This integration still uses legacy platform setup for entities, so a full HA
     restart remains the cleanest way to remove all entities. We do remove the
-    periodic timer and mark setup incomplete to avoid background work after unload.
+    periodic timer, generated-button sync listener, and mark setup incomplete to
+    avoid background work after unload.
     """
     domain_data = hass.data.get(DOMAIN, {})
     remove_interval = domain_data.get("remove_interval")
@@ -210,6 +211,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.exception("Family DEFCON failed to remove periodic timer during unload")
         domain_data["remove_interval"] = None
+    remove_target_button_sync_listener = domain_data.get("remove_target_button_sync_listener")
+    if remove_target_button_sync_listener:
+        try:
+            remove_target_button_sync_listener()
+        except Exception:
+            _LOGGER.exception("Family DEFCON failed to remove target button sync listener during unload")
+        domain_data["remove_target_button_sync_listener"] = None
     domain_data["setup_complete"] = False
     return True
 
@@ -1650,7 +1658,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
         opts = dict(getattr(entry, "options", {}) or {})
-        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ". Restart Home Assistant if people or dashboard targets were added, removed, or renamed.")
+        async_dispatcher_send(hass, SIGNAL_TARGET_BUTTONS_UPDATE)
+        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ". Generated dashboard target buttons refreshed.")
 
     async def handle_block_person(call: ServiceCall) -> None:
         person = call.data["person"]
@@ -2331,6 +2340,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         hass.data[DOMAIN]["platforms_loaded"] = True
     else:
         _LOGGER.info("Family DEFCON platforms already loaded; skipped duplicate platform load.")
+        async_dispatcher_send(hass, SIGNAL_TARGET_BUTTONS_UPDATE)
 
     hass.data[DOMAIN]["setup_complete"] = True
     return True

@@ -18,7 +18,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 
-from .const import DOMAIN, SIGNAL_UPDATE
+from .const import DOMAIN, SIGNAL_TARGET_BUTTONS_UPDATE, SIGNAL_UPDATE
 
 
 def _slugify_target(value: str) -> str:
@@ -42,6 +42,7 @@ def _dashboard_targets_from_config(config: dict) -> list[str]:
 
 async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
     config_data = hass.data[DOMAIN]["config"]
+    target_buttons = hass.data[DOMAIN].setdefault("target_button_entities", {})
     entities = [
         DashboardConfirmButton(hass),
         DashboardLaunchButton(hass),
@@ -56,9 +57,42 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
     ]
 
     for target in _dashboard_targets_from_config(config_data):
-        entities.append(DashboardSelectTargetButton(hass, target))
+        button = DashboardSelectTargetButton(hass, target)
+        target_buttons[button.target_slug] = button
+        entities.append(button)
 
     async_add_entities(entities, True)
+
+    def _sync_target_buttons() -> None:
+        """Add or refresh dynamic target buttons after config/options reloads."""
+        target_buttons = hass.data[DOMAIN].setdefault("target_button_entities", {})
+        new_entities: list[DashboardSelectTargetButton] = []
+
+        for target in _dashboard_targets_from_config(hass.data[DOMAIN]["config"]):
+            target_name = str(target)
+            target_slug = _slugify_target(target_name)
+            existing = target_buttons.get(target_slug)
+
+            if existing is not None:
+                existing.update_target_name(target_name)
+                existing.async_write_ha_state()
+                continue
+
+            button = DashboardSelectTargetButton(hass, target_name)
+            target_buttons[target_slug] = button
+            new_entities.append(button)
+
+        if new_entities:
+            async_add_entities(new_entities, True)
+
+    remove_listener = hass.data[DOMAIN].get("remove_target_button_sync_listener")
+    if remove_listener:
+        remove_listener()
+    hass.data[DOMAIN]["remove_target_button_sync_listener"] = async_dispatcher_connect(
+        hass,
+        SIGNAL_TARGET_BUTTONS_UPDATE,
+        _sync_target_buttons,
+    )
 
 
 def _verify_pin_value(pin: str, user_data: dict) -> bool:
@@ -166,6 +200,12 @@ class DashboardSelectTargetButton(BaseDashboardButton):
         self._attr_unique_id = object_id
         self._attr_suggested_object_id = object_id
         self._attr_icon = "mdi:account-crosshairs"
+
+    def update_target_name(self, target_name: str) -> None:
+        """Refresh display metadata when a target is renamed but keeps the same slug."""
+        self.target_name = str(target_name)
+        self.target_slug = _slugify_target(self.target_name)
+        self._attr_name = self.target_name
 
     @property
     def extra_state_attributes(self) -> dict:
