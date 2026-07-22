@@ -1,24 +1,28 @@
 """Button entities for the Family DEFCON dashboard interface."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import hashlib
-import hmac
-import re
+import logging
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 
 from .const import DOMAIN, SIGNAL_UPDATE
-from .entity import async_add_entry_entities
+from .config_helpers import slugify_identifier, verify_pin_value
+from .entity import async_add_entry_entities, async_remove_stale_entry_entities
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _slugify_target(value: str) -> str:
     """Create a safe entity id suffix from a configured target name."""
-    slug = re.sub(r"[^a-z0-9_]+", "_", str(value).lower()).strip("_")
-    return slug or "target"
+    return slugify_identifier(value) or "target"
 
 
 def _dashboard_targets_from_config(config: dict) -> list[str]:
@@ -30,7 +34,11 @@ def _dashboard_targets_from_config(config: dict) -> list[str]:
     if isinstance(configured, list) and configured:
         return [str(item) for item in configured if not people or str(item) in people]
 
-    fallback = list(dict.fromkeys(config.get("default_targets", []) + config.get("parent_targets", [])))
+    fallback = list(
+        dict.fromkeys(
+            config.get("default_targets", []) + config.get("parent_targets", [])
+        )
+    )
     return [str(item) for item in fallback if not people or str(item) in people]
 
 
@@ -54,8 +62,29 @@ async def async_setup_entry(
         ParentAdminCleanupTargetsButton(hass),
     ]
 
+    active_target_unique_ids: set[str] = set()
     for target in _dashboard_targets_from_config(config_data):
+        unique_id = f"family_defcon_select_target_{_slugify_target(target)}"
+        if unique_id in active_target_unique_ids:
+            _LOGGER.warning(
+                "Skipping dashboard target %s because its entity ID conflicts with another target",
+                target,
+            )
+            continue
+        active_target_unique_ids.add(unique_id)
         entities.append(DashboardSelectTargetButton(hass, target))
+
+    removed = async_remove_stale_entry_entities(
+        hass,
+        entry,
+        active_target_unique_ids,
+        unique_id_prefixes=("family_defcon_select_target_",),
+    )
+    if removed:
+        _LOGGER.info(
+            "Removed %s stale dashboard target button registry entries after configuration reload",
+            len(removed),
+        )
 
     async_add_entry_entities(
         entry,
@@ -63,36 +92,6 @@ async def async_setup_entry(
         entities,
         update_before_add=True,
     )
-
-
-def _verify_pin_value(pin: str, user_data: dict) -> bool:
-    """Verify fast SHA256 hashes, old PBKDF2 hashes, or legacy plain text PINs."""
-    stored_hash = str(user_data.get("pin_hash", "") or "")
-    if stored_hash:
-        try:
-            parts = stored_hash.split("$")
-            algo = parts[0]
-
-            if algo == "sha256" and len(parts) == 3:
-                _, salt, expected = parts
-                digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
-                return hmac.compare_digest(digest, expected)
-
-            if algo == "pbkdf2_sha256" and len(parts) == 4:
-                _, iterations_raw, salt, expected = parts
-                digest = hashlib.pbkdf2_hmac(
-                    "sha256",
-                    str(pin).encode(),
-                    salt.encode(),
-                    int(iterations_raw),
-                ).hex()
-                return hmac.compare_digest(digest, expected)
-
-            return False
-        except Exception:
-            return False
-
-    return hmac.compare_digest(str(user_data.get("pin", "")), str(pin))
 
 
 class BaseDashboardButton(ButtonEntity):
@@ -112,7 +111,11 @@ class BaseDashboardButton(ButtonEntity):
 
     def dashboard_station(self) -> str:
         dashboard = self.config_data.get("dashboard", {})
-        return str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+        return (
+            str(dashboard.get("station_id", "dashboard"))
+            if isinstance(dashboard, dict)
+            else "dashboard"
+        )
 
     def _pin_locked_remaining(self, station: str) -> int:
         locked_raw = self.state_data.get("pin_locked_until", {}).get(station)
@@ -126,7 +129,7 @@ class BaseDashboardButton(ButtonEntity):
 
     def _verify_dashboard_pin(self, pin: str) -> tuple[bool, str]:
         for person, data in self.config_data.get("auth", {}).get("users", {}).items():
-            if _verify_pin_value(pin, data if isinstance(data, dict) else {}):
+            if verify_pin_value(pin, data if isinstance(data, dict) else {}):
                 return True, str(person)
         return False, ""
 
@@ -134,24 +137,38 @@ class BaseDashboardButton(ButtonEntity):
         attempts = int(self.state_data.get("pin_bad_attempts", {}).get(station, 0)) + 1
         self.state_data.setdefault("pin_bad_attempts", {})[station] = attempts
 
-        max_attempts = int(self.config_data.get("auth", {}).get("max_bad_pin_attempts", 3))
+        max_attempts = int(
+            self.config_data.get("auth", {}).get("max_bad_pin_attempts", 3)
+        )
         remaining_attempts = max(max_attempts - attempts, 0)
 
         self.state_data["dashboard_confirm"] = False
 
         if attempts >= max_attempts:
-            lockout_seconds = int(self.config_data.get("auth", {}).get("lockout_seconds_after_bad_pins", 120))
+            lockout_seconds = int(
+                self.config_data.get("auth", {}).get(
+                    "lockout_seconds_after_bad_pins", 120
+                )
+            )
             until = datetime.now() + timedelta(seconds=lockout_seconds)
-            self.state_data.setdefault("pin_locked_until", {})[station] = until.isoformat()
+            self.state_data.setdefault("pin_locked_until", {})[station] = (
+                until.isoformat()
+            )
             self.state_data["pin_bad_attempts"][station] = 0
-            self.state_data["last_event"] = f"Invalid PIN. Terminal locked until {until.strftime('%H:%M:%S')}."
+            self.state_data["last_event"] = (
+                f"Invalid PIN. Terminal locked until {until.strftime('%H:%M:%S')}."
+            )
         else:
             suffix = "s" if remaining_attempts != 1 else ""
-            self.state_data["last_event"] = f"Invalid PIN. {remaining_attempts} attempt{suffix} left before lockout."
+            self.state_data["last_event"] = (
+                f"Invalid PIN. {remaining_attempts} attempt{suffix} left before lockout."
+            )
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPDATE, self.async_write_ha_state
+            )
         )
 
 
@@ -179,8 +196,10 @@ class DashboardSelectTargetButton(BaseDashboardButton):
             "display_name": self.target_name,
             "friendly_label": self.target_name,
             "target_slug": self.target_slug,
-            "is_default_target": self.target_name in self.config_data.get("default_targets", []),
-            "is_parent_target": self.target_name in self.config_data.get("parent_targets", []),
+            "is_default_target": self.target_name
+            in self.config_data.get("default_targets", []),
+            "is_parent_target": self.target_name
+            in self.config_data.get("parent_targets", []),
         }
 
     @property
@@ -189,13 +208,17 @@ class DashboardSelectTargetButton(BaseDashboardButton):
 
     async def async_press(self) -> None:
         if not self.available:
-            self.state_data["last_event"] = f"Dashboard target rejected. {self.target_name} is not configured."
+            self.state_data["last_event"] = (
+                f"Dashboard target rejected. {self.target_name} is not configured."
+            )
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         self.state_data["dashboard_target"] = self.target_name
         self.state_data["dashboard_confirm"] = False
-        self.state_data["last_event"] = f"Dashboard target selected: {self.target_name}. Enter PIN and confirm."
+        self.state_data["last_event"] = (
+            f"Dashboard target selected: {self.target_name}. Enter PIN and confirm."
+        )
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
@@ -217,20 +240,26 @@ class DashboardConfirmButton(BaseDashboardButton):
             return
 
         if len(pin) > 4:
-            self.state_data["last_event"] = "Dashboard confirm rejected. PIN must be 4 digits or fewer."
+            self.state_data["last_event"] = (
+                "Dashboard confirm rejected. PIN must be 4 digits or fewer."
+            )
             self.state_data["dashboard_confirm"] = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         if not target:
-            self.state_data["last_event"] = "Dashboard confirm rejected. Missing target."
+            self.state_data["last_event"] = (
+                "Dashboard confirm rejected. Missing target."
+            )
             self.state_data["dashboard_confirm"] = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         remaining = self._pin_locked_remaining(station)
         if remaining > 0:
-            self.state_data["last_event"] = f"PIN entry locked at {station} for {remaining} seconds."
+            self.state_data["last_event"] = (
+                f"PIN entry locked at {station} for {remaining} seconds."
+            )
             self.state_data["dashboard_confirm"] = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
@@ -243,7 +272,9 @@ class DashboardConfirmButton(BaseDashboardButton):
 
         self.state_data.setdefault("pin_bad_attempts", {})[station] = 0
         self.state_data["dashboard_confirm"] = True
-        self.state_data["last_event"] = f"Dashboard target confirmed by {launcher}. Target locked: {target}."
+        self.state_data["last_event"] = (
+            f"Dashboard target confirmed by {launcher}. Target locked: {target}."
+        )
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
 
@@ -272,11 +303,15 @@ class DashboardLaunchButton(BaseDashboardButton):
             return
 
         if not bool(self.state_data.get("dashboard_confirm", False)):
-            self.state_data["last_event"] = "Dashboard launch rejected. Confirm valid PIN before launch."
+            self.state_data["last_event"] = (
+                "Dashboard launch rejected. Confirm valid PIN before launch."
+            )
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
-        self.state_data["last_event"] = f"Launch sent for target {target}. Applying rules..."
+        self.state_data["last_event"] = (
+            f"Launch sent for target {target}. Applying rules..."
+        )
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
         await self.hass.services.async_call(
@@ -301,11 +336,24 @@ class DashboardCancelButton(BaseDashboardButton):
         dashboard = self.config_data.get("dashboard", {})
         targets = dashboard.get("targets") if isinstance(dashboard, dict) else None
         if not isinstance(targets, list) or not targets:
-            targets = list(dict.fromkeys(self.config_data["default_targets"] + self.config_data["parent_targets"]))
+            targets = list(
+                dict.fromkeys(
+                    self.config_data["default_targets"]
+                    + self.config_data["parent_targets"]
+                )
+            )
 
-        default_target = str(dashboard.get("default_target", "")) if isinstance(dashboard, dict) else ""
+        default_target = (
+            str(dashboard.get("default_target", ""))
+            if isinstance(dashboard, dict)
+            else ""
+        )
         self.state_data["dashboard_pin"] = ""
-        self.state_data["dashboard_target"] = default_target if default_target in targets else (str(targets[0]) if targets else "")
+        self.state_data["dashboard_target"] = (
+            default_target
+            if default_target in targets
+            else (str(targets[0]) if targets else "")
+        )
         self.state_data["dashboard_confirm"] = False
         self.state_data["last_event"] = "Dashboard command cancelled."
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
@@ -322,13 +370,9 @@ class ParentAdminServiceButton(BaseDashboardButton):
         self._attr_icon = self.icon_name
 
     async def async_press(self) -> None:
-        await self.hass.services.async_call(DOMAIN, self.service_name, {}, blocking=False)
-
-
-
-
-
-
+        await self.hass.services.async_call(
+            DOMAIN, self.service_name, {}, blocking=False
+        )
 
 
 class ParentAdminConfirmButton(ParentAdminServiceButton):

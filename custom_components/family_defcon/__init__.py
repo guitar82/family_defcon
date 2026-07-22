@@ -6,9 +6,6 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 import logging
 import json
-import hashlib
-import hmac
-import secrets
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +34,20 @@ from .const import (
     STORAGE_VERSION,
     SIGNAL_UPDATE,
 )
+from .config_helpers import (
+    CONFIG_ENTRY_VERSION,
+    INTEGRATION_VERSION,
+    default_options,
+    hash_pin_value,
+    migrate_auth_users_mapping,
+    normalize_adguard_url,
+    normalize_daily_reset_time,
+    verify_pin_value,
+)
 
 _LOGGER = logging.getLogger(__name__)
 CONFIG_PATH = "family_defcon.yaml"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
@@ -49,117 +57,291 @@ PLATFORMS: list[Platform] = [
     Platform.BUTTON,
 ]
 
-LAUNCH_SCHEMA = vol.Schema({
-    vol.Required("launcher"): cv.string,
-    vol.Required("target"): cv.string,
-    vol.Optional("station", default=""): cv.string,
-})
+LAUNCH_SCHEMA = vol.Schema(
+    {
+        vol.Required("launcher"): cv.string,
+        vol.Required("target"): cv.string,
+        vol.Optional("station", default=""): cv.string,
+    }
+)
 
-LAUNCH_WITH_PIN_SCHEMA = vol.Schema({
-    vol.Required("pin"): cv.string,
-    vol.Required("target"): cv.string,
-    vol.Optional("station", default=""): cv.string,
-})
+SHORT_PIN = vol.All(cv.string, vol.Length(min=1, max=4))
+FOUR_DIGIT_PIN = vol.All(cv.string, vol.Match(r"^[0-9]{4}$"))
+
+LAUNCH_WITH_PIN_SCHEMA = vol.Schema(
+    {
+        vol.Required("pin"): SHORT_PIN,
+        vol.Required("target"): cv.string,
+        vol.Optional("station", default=""): cv.string,
+    }
+)
 
 BOOL_SCHEMA = vol.Schema({vol.Required("enabled"): cv.boolean})
 PERSON_SCHEMA = vol.Schema({vol.Required("person"): cv.string})
-DASHBOARD_KEYPRESS_SCHEMA = vol.Schema({vol.Required("digit"): cv.string})
-DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
+DASHBOARD_KEYPRESS_SCHEMA = vol.Schema(
+    {vol.Required("digit"): vol.In([str(digit) for digit in range(10)])}
+)
+DASHBOARD_PIN_SCHEMA = vol.Schema({vol.Required("pin"): FOUR_DIGIT_PIN})
 DASHBOARD_TARGET_SCHEMA = vol.Schema({vol.Required("target"): cv.string})
-HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): cv.string})
+HASH_PIN_SCHEMA = vol.Schema({vol.Required("pin"): FOUR_DIGIT_PIN})
 AUTH_SOURCE_SCHEMA = vol.Schema({})
 CONFIG_AUDIT_SCHEMA = vol.Schema({})
-CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA = vol.Schema({vol.Optional("remove_old_select_target", default=True): cv.boolean, vol.Optional("remove_family_defcon_target_buttons", default=False): cv.boolean})
-
-
-
-
-
+CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA = vol.Schema(
+    {
+        vol.Optional("remove_old_select_target", default=True): cv.boolean,
+        vol.Optional("remove_family_defcon_target_buttons", default=False): cv.boolean,
+    }
+)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate old Family DEFCON config entries safely.
-
-    Older test builds changed the config flow VERSION without providing a migration
-    handler, which can cause Home Assistant to report that the migration agent is
-    not available. This migration is intentionally conservative. It preserves the
-    user's existing data/options and only adds missing defaults used by newer UI
-    option flows.
-    """
+    """Migrate old entries, normalize settings, and remove plaintext PINs."""
     _LOGGER.info(
         "Migrating Family DEFCON config entry from version %s.%s",
         entry.version,
         entry.minor_version,
     )
 
-    options = dict(entry.options or {})
-    options.setdefault("use_ui_config", bool(options.get("use_ui_config", False)))
-    options.setdefault("cooldown_seconds", int(options.get("cooldown_seconds", 30)))
-    options.setdefault("launches_before_mutual_destruction", int(options.get("launches_before_mutual_destruction", 5)))
-    options.setdefault("chain_before_mutual_destruction", int(options.get("chain_before_mutual_destruction", 4)))
-    options.setdefault("daily_reset_time", str(options.get("daily_reset_time", "05:00:00")))
-    options.setdefault("max_event_log", int(options.get("max_event_log", 25)))
-    options.setdefault("allow_parent_targets_default", bool(options.get("allow_parent_targets_default", False)))
-    options.setdefault("require_station_match", bool(options.get("require_station_match", False)))
-    options.setdefault("require_key_for_launch", bool(options.get("require_key_for_launch", False)))
-    options.setdefault("pin_timeout_seconds", int(options.get("pin_timeout_seconds", 60)))
-    options.setdefault("max_bad_pin_attempts", int(options.get("max_bad_pin_attempts", 3)))
-    options.setdefault("lockout_seconds_after_bad_pins", int(options.get("lockout_seconds_after_bad_pins", 120)))
+    if entry.version > CONFIG_ENTRY_VERSION:
+        _LOGGER.error(
+            "Family DEFCON config entry version %s is newer than supported version %s",
+            entry.version,
+            CONFIG_ENTRY_VERSION,
+        )
+        return False
 
-    options.setdefault("dns_enabled", bool(options.get("dns_enabled", True)))
-    options.setdefault("enforcement_mode", str(options.get("enforcement_mode", "active")))
-    options.setdefault("mutual_destruction_scope", str(options.get("mutual_destruction_scope", "default_targets")))
-    options.setdefault("adguard_base_url", str(options.get("adguard_base_url", "")))
-    options.setdefault("adguard_username_secret", str(options.get("adguard_username_secret", "adguard_username")))
-    options.setdefault("adguard_password_secret", str(options.get("adguard_password_secret", "adguard_password")))
-    options.setdefault("adguard_rule_prefix", str(options.get("adguard_rule_prefix", "Family DEFCON Block")))
+    old_options = dict(entry.options or {})
+    options = {**default_options(), **old_options}
 
-    options.setdefault("first_strike_target_minutes", int(options.get("first_strike_target_minutes", 30)))
-    options.setdefault("retaliator_extra_minutes", int(options.get("retaliator_extra_minutes", 15)))
-    options.setdefault("retaliation_target_minutes", int(options.get("retaliation_target_minutes", 30)))
-    options.setdefault("reattacker_extra_minutes", int(options.get("reattacker_extra_minutes", 15)))
-    options.setdefault("reattack_target_minutes", int(options.get("reattack_target_minutes", 45)))
+    # Entries originally created for YAML-only operation must remain YAML-first.
+    if "use_ui_config" not in old_options:
+        options["use_ui_config"] = False
 
-    # Guided UI defaults only if no existing guided config exists.
-    # Advanced raw YAML overrides caused confusion in early v5 builds.
-    # Keep old text saved, but do not apply it unless the user explicitly enables the switch.
-    options.setdefault("use_advanced_yaml_overrides", False)
+    defaults = default_options()
+    integer_bounds = {
+        "cooldown_seconds": (0, 3600),
+        "launches_before_mutual_destruction": (2, 99),
+        "chain_before_mutual_destruction": (2, 99),
+        "max_event_log": (5, 200),
+        "pin_timeout_seconds": (1, 3600),
+        "max_bad_pin_attempts": (1, 20),
+        "lockout_seconds_after_bad_pins": (1, 3600),
+        "first_strike_target_minutes": (1, 999),
+        "retaliator_extra_minutes": (1, 999),
+        "retaliation_target_minutes": (1, 999),
+        "reattacker_extra_minutes": (1, 999),
+        "reattack_target_minutes": (1, 999),
+    }
+    for key, (minimum, maximum) in integer_bounds.items():
+        try:
+            parsed = int(float(options[key]))
+        except (TypeError, ValueError):
+            parsed = defaults[key]
+        options[key] = parsed if minimum <= parsed <= maximum else defaults[key]
 
-    options.setdefault("people_list", options.get("people_list", []))
-    options.setdefault("people_roles", options.get("people_roles", {}))
-    options.setdefault("people_pins", {})
-    options.setdefault("people_pin_hashes", options.get("people_pin_hashes", {}))
-    options.setdefault("people_adguard_clients", options.get("people_adguard_clients", {}))
-    options.setdefault("default_targets_list", options.get("default_targets_list", []))
-    options.setdefault("parent_targets_list", options.get("parent_targets_list", []))
-    options.setdefault("dashboard_targets_list", options.get("dashboard_targets_list", []))
-    options.setdefault("dashboard_station_id", str(options.get("dashboard_station_id", "dashboard")))
-    options.setdefault("dashboard_default_target", str(options.get("dashboard_default_target", "")))
-    options.setdefault("stations_list", options.get("stations_list", []))
+    try:
+        options["daily_reset_time"] = normalize_daily_reset_time(
+            options.get("daily_reset_time", "05:00:00")
+        )
+    except ValueError:
+        _LOGGER.warning(
+            "Family DEFCON replaced an invalid saved daily reset time with 05:00:00"
+        )
+        options["daily_reset_time"] = "05:00:00"
+
+    try:
+        options["adguard_base_url"] = normalize_adguard_url(
+            options.get("adguard_base_url", "")
+        )
+    except ValueError:
+        _LOGGER.warning(
+            "Family DEFCON cleared an invalid saved AdGuard URL; re-enter it in Configure"
+        )
+        options["adguard_base_url"] = ""
+
+    # v6 removes plaintext PIN options. Existing hashes are retained and any
+    # legacy plaintext PINs are converted before the old mapping is cleared.
+    pin_hashes = options.get("people_pin_hashes", {})
+    if not isinstance(pin_hashes, dict):
+        pin_hashes = {}
+    else:
+        pin_hashes = dict(pin_hashes)
+    legacy_pins = options.get("people_pins", {})
+    if isinstance(legacy_pins, dict):
+        for person, pin in legacy_pins.items():
+            if str(pin or "") and not str(pin_hashes.get(person, "") or ""):
+                pin_hashes[str(person)] = hash_pin_value(str(pin))
+    options["people_pin_hashes"] = pin_hashes
+    options["people_pins"] = {}
+
+    raw_auth_users_yaml = str(options.get("auth_users_yaml", "") or "").strip()
+    if raw_auth_users_yaml:
+        try:
+            auth_users = yaml.safe_load(raw_auth_users_yaml)
+            if isinstance(auth_users, dict):
+                migrated_auth_users = migrate_auth_users_mapping(auth_users)
+                if migrated_auth_users != auth_users:
+                    options["auth_users_yaml"] = yaml.safe_dump(
+                        migrated_auth_users,
+                        sort_keys=False,
+                    ).strip()
+        except yaml.YAMLError:
+            _LOGGER.warning(
+                "Family DEFCON could not migrate invalid saved auth users YAML"
+            )
+
+    for key in (
+        "people_list",
+        "default_targets_list",
+        "parent_targets_list",
+        "dashboard_targets_list",
+        "stations_list",
+    ):
+        if not isinstance(options.get(key), list):
+            options[key] = list(defaults[key])
+    for key in ("people_roles", "people_adguard_clients"):
+        if not isinstance(options.get(key), dict):
+            options[key] = dict(defaults[key])
+
+    if options.get("use_ui_config") and options["people_list"]:
+        people: list[str] = []
+        seen_people: set[str] = set()
+        for raw_person in options["people_list"]:
+            person = str(raw_person).strip()
+            lowered = person.casefold()
+            if not person or lowered in seen_people:
+                continue
+            people.append(person)
+            seen_people.add(lowered)
+        people_by_lower = {person.casefold(): person for person in people}
+
+        def _valid_people(values: Any) -> list[str]:
+            if not isinstance(values, list):
+                return []
+            result: list[str] = []
+            for value in values:
+                canonical = people_by_lower.get(str(value).strip().casefold())
+                if canonical and canonical not in result:
+                    result.append(canonical)
+            return result
+
+        options["people_list"] = people
+
+        def _canonical_people_mapping(
+            values: Any,
+            *,
+            default_factory,
+            omit_missing: bool = False,
+        ) -> dict[str, Any]:
+            if not isinstance(values, dict):
+                values = {}
+            by_lower = {str(key).casefold(): value for key, value in values.items()}
+            result: dict[str, Any] = {}
+            for person in people:
+                if person.casefold() in by_lower:
+                    result[person] = by_lower[person.casefold()]
+                elif not omit_missing:
+                    result[person] = default_factory(person)
+            return result
+
+        options["people_roles"] = _canonical_people_mapping(
+            options.get("people_roles"),
+            default_factory=lambda _person: "child",
+        )
+        options["people_roles"] = {
+            person: (
+                str(role).lower()
+                if str(role).lower() in {"parent", "child"}
+                else "child"
+            )
+            for person, role in options["people_roles"].items()
+        }
+        options["people_adguard_clients"] = _canonical_people_mapping(
+            options.get("people_adguard_clients"),
+            default_factory=lambda person: person,
+        )
+        options["people_pin_hashes"] = _canonical_people_mapping(
+            options.get("people_pin_hashes"),
+            default_factory=lambda _person: "",
+            omit_missing=True,
+        )
+        options["default_targets_list"] = _valid_people(
+            options.get("default_targets_list")
+        )
+        options["parent_targets_list"] = _valid_people(
+            options.get("parent_targets_list")
+        )
+        dashboard_targets = _valid_people(options.get("dashboard_targets_list"))
+        options["dashboard_targets_list"] = dashboard_targets or list(people)
+        dashboard_default = people_by_lower.get(
+            str(options.get("dashboard_default_target", "")).strip().casefold()
+        )
+        if (
+            options["dashboard_targets_list"]
+            and dashboard_default not in options["dashboard_targets_list"]
+        ):
+            dashboard_default = options["dashboard_targets_list"][0]
+        options["dashboard_default_target"] = dashboard_default or ""
 
     station_id = str(options.get("dashboard_station_id", "dashboard") or "dashboard")
-    stations_list = options.get("stations_list", [])
-    if not isinstance(stations_list, list):
-        stations_list = []
-    if not any(isinstance(item, dict) and str(item.get("id", "")) == station_id for item in stations_list):
-        stations_list.append({
-            "id": station_id,
-            "name": "Home Assistant Dashboard",
-            "enabled": True,
-            "key_entity": "",
-        })
+    raw_stations = options.get("stations_list", [])
+    stations_list: list[dict[str, Any]] = []
+    seen_station_ids: set[str] = set()
+    if isinstance(raw_stations, list):
+        for raw_station in raw_stations:
+            if not isinstance(raw_station, dict):
+                continue
+            raw_station_id = str(raw_station.get("id", "")).strip()
+            lowered = raw_station_id.casefold()
+            if not raw_station_id or lowered in seen_station_ids:
+                continue
+            seen_station_ids.add(lowered)
+            station_name = str(
+                raw_station.get("name", raw_station_id) or raw_station_id
+            ).strip()
+            stations_list.append(
+                {
+                    "id": raw_station_id,
+                    "name": station_name or raw_station_id,
+                    "enabled": bool(raw_station.get("enabled", True)),
+                    "key_entity": str(raw_station.get("key_entity", "") or "").strip(),
+                }
+            )
+    matching_station = next(
+        (
+            str(item.get("id", ""))
+            for item in stations_list
+            if isinstance(item, dict)
+            and str(item.get("id", "")).casefold() == station_id.casefold()
+        ),
+        None,
+    )
+    if matching_station:
+        options["dashboard_station_id"] = matching_station
+    else:
+        stations_list.append(
+            {
+                "id": station_id,
+                "name": "Home Assistant Dashboard",
+                "enabled": True,
+                "key_entity": "",
+            }
+        )
+        options["dashboard_station_id"] = station_id
     options["stations_list"] = stations_list
 
     data = dict(entry.data or {})
-    data.setdefault("name", data.get("name", "Family DEFCON"))
-    data.setdefault("config_file", data.get("config_file", CONFIG_PATH))
+    if not str(data.get("name", "") or "").strip():
+        data["name"] = "Family DEFCON"
+    if not str(data.get("config_file", "") or "").strip():
+        data["config_file"] = CONFIG_PATH
 
     hass.config_entries.async_update_entry(
         entry,
         data=data,
         options=options,
         unique_id=entry.unique_id or DOMAIN,
-        version=5,
+        version=CONFIG_ENTRY_VERSION,
         minor_version=0,
     )
     _LOGGER.info("Family DEFCON config entry migration complete.")
@@ -197,7 +379,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             remove_interval()
         except Exception:
-            _LOGGER.exception("Family DEFCON failed to remove periodic timer during unload")
+            _LOGGER.exception(
+                "Family DEFCON failed to remove periodic timer during unload"
+            )
         domain_data["remove_interval"] = None
     for service_name in domain_data.get("registered_services", set()):
         try:
@@ -255,15 +439,43 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         return secrets_cache.get(secret_name, default)
 
     def normalize_config(raw: dict) -> dict:
-        people = list(raw.get("people", DEFAULT_PEOPLE))
-        default_targets = list(raw.get("default_targets", DEFAULT_TARGETS))
-        parent_targets = list(raw.get("parent_targets", DEFAULT_PARENTS))
-        penalties = raw.get("penalties", {}) if isinstance(raw.get("penalties", {}), dict) else {}
+        def _safe_string_list(value: Any, fallback: list[str]) -> list[str]:
+            if not isinstance(value, list):
+                return list(fallback)
+            return [str(item).strip() for item in value if str(item).strip()]
+
+        def _safe_int(
+            value: Any,
+            default: int,
+            *,
+            minimum: int,
+            maximum: int,
+        ) -> int:
+            try:
+                parsed = int(float(value))
+            except (TypeError, ValueError):
+                return default
+            return parsed if minimum <= parsed <= maximum else default
+
+        people = _safe_string_list(raw.get("people"), DEFAULT_PEOPLE)
+        default_targets = _safe_string_list(raw.get("default_targets"), DEFAULT_TARGETS)
+        parent_targets = _safe_string_list(raw.get("parent_targets"), DEFAULT_PARENTS)
+        penalties = (
+            raw.get("penalties", {})
+            if isinstance(raw.get("penalties", {}), dict)
+            else {}
+        )
         auth = raw.get("auth", {}) if isinstance(raw.get("auth", {}), dict) else {}
         dns = raw.get("dns", {}) if isinstance(raw.get("dns", {}), dict) else {}
-        adguard = dns.get("adguard_home", {}) if isinstance(dns.get("adguard_home", {}), dict) else {}
+        adguard = (
+            dns.get("adguard_home", {})
+            if isinstance(dns.get("adguard_home", {}), dict)
+            else {}
+        )
 
-        stations_in = raw.get("stations", {}) if isinstance(raw.get("stations", {}), dict) else {}
+        stations_in = (
+            raw.get("stations", {}) if isinstance(raw.get("stations", {}), dict) else {}
+        )
         stations = {}
         for station_id, station_data in stations_in.items():
             if isinstance(station_data, dict):
@@ -275,7 +487,11 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 }
 
         users = auth.get("users", {}) if isinstance(auth.get("users", {}), dict) else {}
-        clients_in = adguard.get("clients", {}) if isinstance(adguard.get("clients", {}), dict) else {}
+        clients_in = (
+            adguard.get("clients", {})
+            if isinstance(adguard.get("clients", {}), dict)
+            else {}
+        )
         clients = {}
         for person in people:
             entry = clients_in.get(person, person)
@@ -287,30 +503,93 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             else:
                 clients[person] = {"client_name": str(entry), "enabled": True}
 
+        try:
+            daily_reset_time = normalize_daily_reset_time(
+                raw.get("daily_reset_time", "05:00:00")
+            )
+        except ValueError:
+            daily_reset_time = "05:00:00"
+
         return {
             "people": people,
             "default_targets": default_targets,
             "parent_targets": parent_targets,
-            "allow_parent_targets_default": bool(raw.get("allow_parent_targets_default", False)),
+            "allow_parent_targets_default": bool(
+                raw.get("allow_parent_targets_default", False)
+            ),
             "require_station_match": bool(raw.get("require_station_match", False)),
             "require_key_for_launch": bool(raw.get("require_key_for_launch", False)),
-            "cooldown_seconds": int(raw.get("cooldown_seconds", 30)),
-            "launches_before_mutual_destruction": int(raw.get("launches_before_mutual_destruction", 5)),
-            "chain_before_mutual_destruction": int(raw.get("chain_before_mutual_destruction", 4)),
-            "daily_reset_time": str(raw.get("daily_reset_time", "05:00:00")),
-            "max_event_log": int(raw.get("max_event_log", 25)),
+            "cooldown_seconds": _safe_int(
+                raw.get("cooldown_seconds", 30), 30, minimum=0, maximum=3600
+            ),
+            "launches_before_mutual_destruction": _safe_int(
+                raw.get("launches_before_mutual_destruction", 5),
+                5,
+                minimum=2,
+                maximum=99,
+            ),
+            "chain_before_mutual_destruction": _safe_int(
+                raw.get("chain_before_mutual_destruction", 4),
+                4,
+                minimum=2,
+                maximum=99,
+            ),
+            "daily_reset_time": daily_reset_time,
+            "max_event_log": _safe_int(
+                raw.get("max_event_log", 25), 25, minimum=5, maximum=200
+            ),
             "penalties": {
-                "first_strike_target_minutes": int(penalties.get("first_strike_target_minutes", 30)),
-                "retaliator_extra_minutes": int(penalties.get("retaliator_extra_minutes", 15)),
-                "retaliation_target_minutes": int(penalties.get("retaliation_target_minutes", 30)),
-                "reattacker_extra_minutes": int(penalties.get("reattacker_extra_minutes", 15)),
-                "reattack_target_minutes": int(penalties.get("reattack_target_minutes", 45)),
+                "first_strike_target_minutes": _safe_int(
+                    penalties.get("first_strike_target_minutes", 30),
+                    30,
+                    minimum=1,
+                    maximum=999,
+                ),
+                "retaliator_extra_minutes": _safe_int(
+                    penalties.get("retaliator_extra_minutes", 15),
+                    15,
+                    minimum=1,
+                    maximum=999,
+                ),
+                "retaliation_target_minutes": _safe_int(
+                    penalties.get("retaliation_target_minutes", 30),
+                    30,
+                    minimum=1,
+                    maximum=999,
+                ),
+                "reattacker_extra_minutes": _safe_int(
+                    penalties.get("reattacker_extra_minutes", 15),
+                    15,
+                    minimum=1,
+                    maximum=999,
+                ),
+                "reattack_target_minutes": _safe_int(
+                    penalties.get("reattack_target_minutes", 45),
+                    45,
+                    minimum=1,
+                    maximum=999,
+                ),
             },
             "auth": {
                 "mode": str(auth.get("mode", "pin")),
-                "pin_timeout_seconds": int(auth.get("pin_timeout_seconds", 60)),
-                "max_bad_pin_attempts": int(auth.get("max_bad_pin_attempts", 3)),
-                "lockout_seconds_after_bad_pins": int(auth.get("lockout_seconds_after_bad_pins", 120)),
+                "pin_timeout_seconds": _safe_int(
+                    auth.get("pin_timeout_seconds", 60),
+                    60,
+                    minimum=1,
+                    maximum=3600,
+                ),
+                "max_bad_pin_attempts": _safe_int(
+                    auth.get("max_bad_pin_attempts", 3),
+                    3,
+                    minimum=1,
+                    maximum=20,
+                ),
+                "lockout_seconds_after_bad_pins": _safe_int(
+                    auth.get("lockout_seconds_after_bad_pins", 120),
+                    120,
+                    minimum=1,
+                    maximum=3600,
+                ),
                 "users": users,
             },
             "stations": stations,
@@ -318,15 +597,21 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 "enabled": bool(dns.get("enabled", False)),
                 "provider": str(dns.get("provider", "none")),
                 "enforcement_mode": str(dns.get("enforcement_mode", "disabled")),
-                "mutual_destruction_scope": str(dns.get("mutual_destruction_scope", "default_targets")),
-                "custom_services": dns.get("custom_services", {}) if isinstance(dns.get("custom_services", {}), dict) else {},
+                "mutual_destruction_scope": str(
+                    dns.get("mutual_destruction_scope", "default_targets")
+                ),
+                "custom_services": dns.get("custom_services", {})
+                if isinstance(dns.get("custom_services", {}), dict)
+                else {},
                 "adguard_home": {
                     "base_url": str(adguard.get("base_url", "")).rstrip("/"),
                     "username": str(adguard.get("username", "")),
                     "password": str(adguard.get("password", "")),
                     "username_secret": str(adguard.get("username_secret", "")),
                     "password_secret": str(adguard.get("password_secret", "")),
-                    "rule_prefix": str(adguard.get("rule_prefix", "Family DEFCON Block")),
+                    "rule_prefix": str(
+                        adguard.get("rule_prefix", "Family DEFCON Block")
+                    ),
                     "clients": clients,
                 },
             },
@@ -380,7 +665,11 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
     def validate_active_config(normalized: dict) -> dict:
         """Clean and validate cross references in the active normalized config."""
-        people = [str(person) for person in normalized.get("people", []) if str(person).strip()]
+        people = [
+            str(person)
+            for person in normalized.get("people", [])
+            if str(person).strip()
+        ]
         normalized["people"] = people
         people_by_lower = {person.lower(): person for person in people}
         people_set = set(people)
@@ -389,11 +678,13 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             return people_by_lower.get(str(value).lower())
 
         normalized["default_targets"] = [
-            canon for item in normalized.get("default_targets", [])
+            canon
+            for item in normalized.get("default_targets", [])
             if (canon := _canon(str(item))) is not None
         ]
         normalized["parent_targets"] = [
-            canon for item in normalized.get("parent_targets", [])
+            canon
+            for item in normalized.get("parent_targets", [])
             if (canon := _canon(str(item))) is not None
         ]
 
@@ -402,7 +693,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             auth_users = {}
         auth_by_lower = {str(key).lower(): value for key, value in auth_users.items()}
         normalized["auth"]["users"] = {
-            person: auth_by_lower.get(person.lower(), auth_users.get(person, {"role": "child"}))
+            person: auth_by_lower.get(
+                person.lower(), auth_users.get(person, {"role": "child"})
+            )
             for person in people
         }
 
@@ -411,7 +704,10 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             clients = {}
         clients_by_lower = {str(key).lower(): value for key, value in clients.items()}
         normalized["dns"]["adguard_home"]["clients"] = {
-            person: clients_by_lower.get(person.lower(), clients.get(person, {"client_name": person, "enabled": True}))
+            person: clients_by_lower.get(
+                person.lower(),
+                clients.get(person, {"client_name": person, "enabled": True}),
+            )
             for person in people
         }
 
@@ -421,13 +717,20 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         dash_targets = dashboard.get("targets", normalized.get("default_targets", []))
         if not isinstance(dash_targets, list):
             dash_targets = normalized.get("default_targets", [])
-        dashboard["targets"] = [str(person) for person in dash_targets if str(person) in people_set]
+        dashboard["targets"] = [
+            str(person) for person in dash_targets if str(person) in people_set
+        ]
         if not dashboard["targets"]:
             dashboard["targets"] = normalized.get("default_targets", []) or people
-        dashboard["default_target"] = str(dashboard.get("default_target") or (dashboard["targets"][0] if dashboard["targets"] else ""))
+        dashboard["default_target"] = str(
+            dashboard.get("default_target")
+            or (dashboard["targets"][0] if dashboard["targets"] else "")
+        )
         if dashboard["default_target"] not in people_set and dashboard["targets"]:
             dashboard["default_target"] = dashboard["targets"][0]
-        dashboard["station_id"] = str(dashboard.get("station_id", "dashboard") or "dashboard")
+        dashboard["station_id"] = str(
+            dashboard.get("station_id", "dashboard") or "dashboard"
+        )
         normalized["dashboard"] = dashboard
 
         return ensure_dashboard_station(normalized)
@@ -445,11 +748,25 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if use_ui_config:
             people_list = opts.get("people_list")
             if isinstance(people_list, list) and people_list:
-                normalized["people"] = [str(person) for person in people_list if str(person).strip()]
+                normalized["people"] = [
+                    str(person) for person in people_list if str(person).strip()
+                ]
 
-                roles = opts.get("people_roles", {}) if isinstance(opts.get("people_roles", {}), dict) else {}
-                pins = opts.get("people_pins", {}) if isinstance(opts.get("people_pins", {}), dict) else {}
-                pin_hashes = opts.get("people_pin_hashes", {}) if isinstance(opts.get("people_pin_hashes", {}), dict) else {}
+                roles = (
+                    opts.get("people_roles", {})
+                    if isinstance(opts.get("people_roles", {}), dict)
+                    else {}
+                )
+                pins = (
+                    opts.get("people_pins", {})
+                    if isinstance(opts.get("people_pins", {}), dict)
+                    else {}
+                )
+                pin_hashes = (
+                    opts.get("people_pin_hashes", {})
+                    if isinstance(opts.get("people_pin_hashes", {}), dict)
+                    else {}
+                )
 
                 normalized["auth"]["users"] = {}
                 for person in normalized["people"]:
@@ -461,17 +778,31 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                         user_data["pin"] = str(pins.get(person, "")).strip()
                     normalized["auth"]["users"][person] = user_data
 
-                normalized["default_targets"] = [
-                    str(p) for p in opts.get("default_targets_list", [])
-                    if str(p) in normalized["people"]
-                ] if isinstance(opts.get("default_targets_list"), list) else normalized["default_targets"]
+                normalized["default_targets"] = (
+                    [
+                        str(p)
+                        for p in opts.get("default_targets_list", [])
+                        if str(p) in normalized["people"]
+                    ]
+                    if isinstance(opts.get("default_targets_list"), list)
+                    else normalized["default_targets"]
+                )
 
-                normalized["parent_targets"] = [
-                    str(p) for p in opts.get("parent_targets_list", [])
-                    if str(p) in normalized["people"]
-                ] if isinstance(opts.get("parent_targets_list"), list) else normalized["parent_targets"]
+                normalized["parent_targets"] = (
+                    [
+                        str(p)
+                        for p in opts.get("parent_targets_list", [])
+                        if str(p) in normalized["people"]
+                    ]
+                    if isinstance(opts.get("parent_targets_list"), list)
+                    else normalized["parent_targets"]
+                )
 
-                clients = opts.get("people_adguard_clients", {}) if isinstance(opts.get("people_adguard_clients", {}), dict) else {}
+                clients = (
+                    opts.get("people_adguard_clients", {})
+                    if isinstance(opts.get("people_adguard_clients", {}), dict)
+                    else {}
+                )
                 normalized["dns"]["adguard_home"]["clients"] = {}
                 for person in normalized["people"]:
                     normalized["dns"]["adguard_home"]["clients"][person] = {
@@ -481,13 +812,24 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
                 dashboard_targets = opts.get("dashboard_targets_list", [])
                 if isinstance(dashboard_targets, list):
-                    dashboard_targets = [str(p) for p in dashboard_targets if str(p) in normalized["people"]]
+                    dashboard_targets = [
+                        str(p)
+                        for p in dashboard_targets
+                        if str(p) in normalized["people"]
+                    ]
                 else:
-                    dashboard_targets = normalized.get("dashboard", {}).get("targets", normalized["people"])
+                    dashboard_targets = normalized.get("dashboard", {}).get(
+                        "targets", normalized["people"]
+                    )
 
                 normalized["dashboard"] = {
                     "station_id": str(opts.get("dashboard_station_id", "dashboard")),
-                    "default_target": str(opts.get("dashboard_default_target", dashboard_targets[0] if dashboard_targets else "")),
+                    "default_target": str(
+                        opts.get(
+                            "dashboard_default_target",
+                            dashboard_targets[0] if dashboard_targets else "",
+                        )
+                    ),
                     "targets": dashboard_targets,
                 }
 
@@ -511,13 +853,19 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             if bool(opts.get("use_advanced_yaml_overrides", False)):
                 people_yaml = opts.get("people_yaml", "")
                 if people_yaml:
-                    parsed_people = _parse_ui_yaml(people_yaml, normalized.get("people", []))
-                    normalized["people"] = _string_list(parsed_people, normalized.get("people", []))
+                    parsed_people = _parse_ui_yaml(
+                        people_yaml, normalized.get("people", [])
+                    )
+                    normalized["people"] = _string_list(
+                        parsed_people, normalized.get("people", [])
+                    )
 
                 auth_users_yaml = opts.get("auth_users_yaml", "")
                 if auth_users_yaml:
                     normalized["auth"]["users"] = _dict_value(
-                        _parse_ui_yaml(auth_users_yaml, normalized.get("auth", {}).get("users", {})),
+                        _parse_ui_yaml(
+                            auth_users_yaml, normalized.get("auth", {}).get("users", {})
+                        ),
                         normalized.get("auth", {}).get("users", {}),
                     )
 
@@ -539,15 +887,28 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 adguard_clients_yaml = opts.get("adguard_clients_yaml", "")
                 if adguard_clients_yaml:
                     clients = _dict_value(
-                        _parse_ui_yaml(adguard_clients_yaml, normalized.get("dns", {}).get("adguard_home", {}).get("clients", {})),
-                        normalized.get("dns", {}).get("adguard_home", {}).get("clients", {}),
+                        _parse_ui_yaml(
+                            adguard_clients_yaml,
+                            normalized.get("dns", {})
+                            .get("adguard_home", {})
+                            .get("clients", {}),
+                        ),
+                        normalized.get("dns", {})
+                        .get("adguard_home", {})
+                        .get("clients", {}),
                     )
                     normalized["dns"]["adguard_home"]["clients"] = {}
                     for person in normalized["people"]:
-                        entry_data = clients.get(person, person) if isinstance(clients, dict) else person
+                        entry_data = (
+                            clients.get(person, person)
+                            if isinstance(clients, dict)
+                            else person
+                        )
                         if isinstance(entry_data, dict):
                             normalized["dns"]["adguard_home"]["clients"][person] = {
-                                "client_name": str(entry_data.get("client_name", person)),
+                                "client_name": str(
+                                    entry_data.get("client_name", person)
+                                ),
                                 "enabled": bool(entry_data.get("enabled", True)),
                             }
                         else:
@@ -564,7 +925,16 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                     )
                     for key, value in penalties.items():
                         if key in normalized["penalties"]:
-                            normalized["penalties"][key] = int(value)
+                            try:
+                                parsed_value = int(float(value))
+                            except (TypeError, ValueError):
+                                _LOGGER.warning(
+                                    "Family DEFCON ignored invalid advanced penalty %s",
+                                    key,
+                                )
+                                continue
+                            if 1 <= parsed_value <= 999:
+                                normalized["penalties"][key] = parsed_value
 
         int_keys = [
             "cooldown_seconds",
@@ -613,20 +983,33 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if opts.get("enforcement_mode"):
             normalized["dns"]["enforcement_mode"] = str(opts["enforcement_mode"])
         if opts.get("mutual_destruction_scope"):
-            normalized["dns"]["mutual_destruction_scope"] = str(opts["mutual_destruction_scope"])
+            normalized["dns"]["mutual_destruction_scope"] = str(
+                opts["mutual_destruction_scope"]
+            )
         if opts.get("adguard_base_url"):
             normalized["dns"]["provider"] = "adguard_home"
             normalized["dns"]["enabled"] = bool(opts.get("dns_enabled", True))
-            normalized["dns"]["enforcement_mode"] = str(opts.get("enforcement_mode", "active") or "active")
-            normalized["dns"]["adguard_home"]["base_url"] = str(opts["adguard_base_url"]).strip().rstrip("/")
+            normalized["dns"]["enforcement_mode"] = str(
+                opts.get("enforcement_mode", "active") or "active"
+            )
+            normalized["dns"]["adguard_home"]["base_url"] = (
+                str(opts["adguard_base_url"]).strip().rstrip("/")
+            )
         if opts.get("adguard_username_secret"):
-            normalized["dns"]["adguard_home"]["username_secret"] = str(opts["adguard_username_secret"])
+            normalized["dns"]["adguard_home"]["username_secret"] = str(
+                opts["adguard_username_secret"]
+            )
         if opts.get("adguard_password_secret"):
-            normalized["dns"]["adguard_home"]["password_secret"] = str(opts["adguard_password_secret"])
+            normalized["dns"]["adguard_home"]["password_secret"] = str(
+                opts["adguard_password_secret"]
+            )
         if opts.get("adguard_rule_prefix"):
-            normalized["dns"]["adguard_home"]["rule_prefix"] = str(opts["adguard_rule_prefix"])
+            normalized["dns"]["adguard_home"]["rule_prefix"] = str(
+                opts["adguard_rule_prefix"]
+            )
 
         return validate_active_config(normalized)
+
     raw = await load_yaml(hass.data.get(DOMAIN, {}).get("config_path", CONFIG_PATH))
     secrets_loaded = await load_yaml("secrets.yaml")
     if isinstance(secrets_loaded, dict):
@@ -640,19 +1023,37 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         hass.data[DOMAIN]["secrets"] = {}
 
     if not raw:
-        _LOGGER.warning("Family DEFCON config missing or empty at %s.", hass.config.path(CONFIG_PATH))
+        _LOGGER.warning(
+            "Family DEFCON config missing or empty at %s.",
+            hass.config.path(CONFIG_PATH),
+        )
     hass.data[DOMAIN]["config"] = apply_options_overrides(normalize_config(raw))
     if not hass.data[DOMAIN]["config"]["people"]:
-        _LOGGER.error("Family DEFCON has no people configured. Add people in the integration UI config or family_defcon.yaml.")
+        _LOGGER.error(
+            "Family DEFCON has no people configured. Add people in the integration UI config or family_defcon.yaml."
+        )
 
     stored = await store.async_load() or {}
-    existing_state = hass.data[DOMAIN].get("state", {}) if isinstance(hass.data[DOMAIN].get("state", {}), dict) else {}
+    existing_state = (
+        hass.data[DOMAIN].get("state", {})
+        if isinstance(hass.data[DOMAIN].get("state", {}), dict)
+        else {}
+    )
     people = hass.data[DOMAIN]["config"]["people"]
 
     state = {
         "armed": bool(existing_state.get("armed", stored.get("armed", False))),
-        "allow_parent_targets": bool(stored.get("allow_parent_targets", hass.data[DOMAIN]["config"]["allow_parent_targets_default"])),
-        "mutual_destruction": bool(existing_state.get("mutual_destruction", stored.get("mutual_destruction", False))),
+        "allow_parent_targets": bool(
+            stored.get(
+                "allow_parent_targets",
+                hass.data[DOMAIN]["config"]["allow_parent_targets_default"],
+            )
+        ),
+        "mutual_destruction": bool(
+            existing_state.get(
+                "mutual_destruction", stored.get("mutual_destruction", False)
+            )
+        ),
         "daily_launches": int(stored.get("daily_launches", 0)),
         "conflict_chain": int(stored.get("conflict_chain", 0)),
         "last_launcher": str(stored.get("last_launcher", "")),
@@ -695,7 +1096,11 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             except Exception:
                 state["blocked_until"][canonical] = None
 
-    existing_blocked = existing_state.get("blocked_until", {}) if isinstance(existing_state, dict) else {}
+    existing_blocked = (
+        existing_state.get("blocked_until", {})
+        if isinstance(existing_state, dict)
+        else {}
+    )
     if isinstance(existing_blocked, dict):
         for person, value in existing_blocked.items():
             if not value:
@@ -719,25 +1124,10 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
     def normalize_adguard_base_url(raw_url: Any) -> str:
         """Normalize UI/YAML AdGuard URL into a usable web API base URL."""
-        value = str(raw_url or "").strip()
-        if not value:
+        try:
+            return normalize_adguard_url(raw_url)
+        except ValueError:
             return ""
-
-        # Users often paste just an IP/host. Assume http.
-        if "://" not in value:
-            value = "http://" + value
-
-        value = value.rstrip("/")
-
-        parsed = urlparse(value)
-        if not parsed.scheme or not parsed.netloc:
-            return ""
-
-        # AdGuard Home UI/API path should be host[:port], not a /control endpoint.
-        if value.endswith("/control") or "/control/" in value:
-            value = value.split("/control", 1)[0].rstrip("/")
-
-        return value
 
     def safe_adguard_url_for_log(base_url: str, path: str = "") -> str:
         """Return sanitized URL for event/log messages."""
@@ -772,7 +1162,6 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
         return ""
 
-
     def get_adguard_ha_integration_connection() -> dict[str, Any]:
         """Read connection details from Home Assistant's AdGuard integration.
 
@@ -792,7 +1181,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             data = dict(getattr(adguard_entry, "data", {}) or {})
             options = dict(getattr(adguard_entry, "options", {}) or {})
             merged = {**data, **options}
-            host = str(merged.get("host") or merged.get("hostname") or merged.get("url") or "").strip()
+            host = str(
+                merged.get("host") or merged.get("hostname") or merged.get("url") or ""
+            ).strip()
             if not host:
                 continue
             raw_port = merged.get("port")
@@ -802,7 +1193,12 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                     port = str(int(raw_port))
                 except Exception:
                     port = str(raw_port).strip()
-            ssl_enabled = bool(merged.get("ssl") or merged.get("use_ssl") or merged.get("tls") or merged.get("https"))
+            ssl_enabled = bool(
+                merged.get("ssl")
+                or merged.get("use_ssl")
+                or merged.get("tls")
+                or merged.get("https")
+            )
             if "://" in host:
                 base_url = normalize_adguard_base_url(host)
             else:
@@ -822,8 +1218,6 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                     "title": getattr(adguard_entry, "title", "AdGuard Home"),
                 }
         return {}
-
-
 
     def canonical_person_name(person: str) -> str:
         """Return configured person name using case-insensitive matching."""
@@ -887,7 +1281,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         adguard = dns["adguard_home"]
 
         use_ha_integration = bool(opts.get("adguard_use_ha_integration", True))
-        ha_connection = get_adguard_ha_integration_connection() if use_ha_integration else {}
+        ha_connection = (
+            get_adguard_ha_integration_connection() if use_ha_integration else {}
+        )
 
         ha_base_url = normalize_adguard_base_url(ha_connection.get("base_url", ""))
         ui_base_url = normalize_adguard_base_url(opts.get("adguard_base_url", ""))
@@ -907,14 +1303,21 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
         dns["enabled"] = bool(opts.get("dns_enabled", dns.get("enabled", True)))
         dns["provider"] = "adguard_home"
-        dns["enforcement_mode"] = str(opts.get("enforcement_mode", dns.get("enforcement_mode", "active")) or "active")
+        dns["enforcement_mode"] = str(
+            opts.get("enforcement_mode", dns.get("enforcement_mode", "active"))
+            or "active"
+        )
         dns.setdefault("mutual_destruction_scope", "default_targets")
 
         adguard["base_url"] = base_url
         adguard["connection_source"] = connection_source
         adguard["ha_config_entry_id"] = str(ha_connection.get("entry_id", "") or "")
         adguard["ha_config_entry_title"] = str(ha_connection.get("title", "") or "")
-        adguard["rule_prefix"] = str(opts.get("adguard_rule_prefix", "") or adguard.get("rule_prefix", "Family DEFCON Block") or "Family DEFCON Block")
+        adguard["rule_prefix"] = str(
+            opts.get("adguard_rule_prefix", "")
+            or adguard.get("rule_prefix", "Family DEFCON Block")
+            or "Family DEFCON Block"
+        )
 
         if ha_base_url:
             adguard["username"] = str(ha_connection.get("username", "") or "")
@@ -922,12 +1325,22 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             adguard["username_secret"] = ""
             adguard["password_secret"] = ""
         else:
-            username_field = opts.get("adguard_username_secret", adguard.get("username_secret", adguard.get("username", "")))
-            password_field = opts.get("adguard_password_secret", adguard.get("password_secret", adguard.get("password", "")))
+            username_field = opts.get(
+                "adguard_username_secret",
+                adguard.get("username_secret", adguard.get("username", "")),
+            )
+            password_field = opts.get(
+                "adguard_password_secret",
+                adguard.get("password_secret", adguard.get("password", "")),
+            )
             adguard["username_secret"] = str(username_field or "adguard_username")
             adguard["password_secret"] = str(password_field or "adguard_password")
-            adguard["username"] = resolve_adguard_credential(username_field, "adguard_username")
-            adguard["password"] = resolve_adguard_credential(password_field, "adguard_password")
+            adguard["username"] = resolve_adguard_credential(
+                username_field, "adguard_username"
+            )
+            adguard["password"] = resolve_adguard_credential(
+                password_field, "adguard_password"
+            )
 
         raw_clients = opts.get("people_adguard_clients", {})
         if not isinstance(raw_clients, dict):
@@ -952,16 +1365,25 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             existing = old_clients.get(person_name, {})
             if not isinstance(existing, dict):
                 existing = {}
-            client_name = str(raw_clients.get(person_name, "") or existing.get("client_name", "") or person_name)
-            clients[person_name] = {"client_name": client_name, "enabled": bool(existing.get("enabled", True))}
+            client_name = str(
+                raw_clients.get(person_name, "")
+                or existing.get("client_name", "")
+                or person_name
+            )
+            clients[person_name] = {
+                "client_name": client_name,
+                "enabled": bool(existing.get("enabled", True)),
+            }
 
         for person, client in raw_clients.items():
             person_name = str(person)
             if person_name not in clients:
-                clients[person_name] = {"client_name": str(client or person_name), "enabled": True}
+                clients[person_name] = {
+                    "client_name": str(client or person_name),
+                    "enabled": True,
+                }
 
         adguard["clients"] = clients
-
 
     async def save_state() -> None:
         payload = dict(st())
@@ -1020,7 +1442,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
             should_remove = False
 
-            if remove_old_select_target and entity_id.startswith("button.select_target_"):
+            if remove_old_select_target and entity_id.startswith(
+                "button.select_target_"
+            ):
                 should_remove = True
 
             if (
@@ -1048,26 +1472,27 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
     async def log_event(message: str) -> None:
         st()["last_event"] = message
         event_log = st().setdefault("event_log", [])
-        event_log.insert(0, {"time": datetime.now().isoformat(timespec="seconds"), "message": message})
-        del event_log[conf()["max_event_log"]:]
+        event_log.insert(
+            0,
+            {"time": datetime.now().isoformat(timespec="seconds"), "message": message},
+        )
+        del event_log[conf()["max_event_log"] :]
         await save_state()
         await update_entities()
 
-
-
-
-
-
-
     def valid_targets() -> list[str]:
         if st()["allow_parent_targets"]:
-            return list(dict.fromkeys(conf()["default_targets"] + conf()["parent_targets"]))
+            return list(
+                dict.fromkeys(conf()["default_targets"] + conf()["parent_targets"])
+            )
         return conf()["default_targets"]
 
     def is_blocked(person: str) -> bool:
         canonical = canonical_person_name(person)
         if st()["mutual_destruction"]:
-            scope = str(conf().get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+            scope = str(
+                conf().get("dns", {}).get("mutual_destruction_scope", "default_targets")
+            ).lower()
             if scope in ("all", "everyone", "people", "all_people"):
                 return person_in_list(canonical, conf()["people"])
             return person_in_list(canonical, conf()["default_targets"])
@@ -1088,7 +1513,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         chain_limit = int(conf().get("chain_before_mutual_destruction", 4))
         active_blocks = active_block_count()
 
-        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (chain_limit > 1 and conflict_chain >= chain_limit - 1):
+        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (
+            chain_limit > 1 and conflict_chain >= chain_limit - 1
+        ):
             return 2
 
         if conflict_chain >= 2 or active_blocks >= 2:
@@ -1099,7 +1526,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
         return 5
 
-    async def adguard_call_json(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[bool, Any]:
+    async def adguard_call_json(
+        method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> tuple[bool, Any]:
         """Call AdGuard Home using JSON."""
         st().setdefault("adguard_last_error", "")
         st().setdefault("adguard_last_status", "unknown")
@@ -1110,8 +1539,12 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         base_url = normalize_adguard_base_url(adguard.get("base_url", ""))
 
         if not base_url:
-            st()["adguard_last_error"] = "AdGuard base_url is blank or invalid after UI/YAML mapping."
-            await log_event("Family DEFCON AdGuard base_url is blank or invalid after UI/YAML mapping.")
+            st()["adguard_last_error"] = (
+                "AdGuard base_url is blank or invalid after UI/YAML mapping."
+            )
+            await log_event(
+                "Family DEFCON AdGuard base_url is blank or invalid after UI/YAML mapping."
+            )
             return False, None
 
         url = base_url + path
@@ -1131,21 +1564,29 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 async with session.get(url, auth=auth, timeout=timeout) as resp:
                     text = await resp.text()
                     if resp.status >= 400:
-                        st()["adguard_last_error"] = f"GET {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                        st()["adguard_last_error"] = (
+                            f"GET {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                        )
                         await log_event(st()["adguard_last_error"])
                         return False, None
                     try:
                         return True, await resp.json()
                     except Exception:
-                        st()["adguard_last_error"] = f"GET {safe_url} returned non-JSON response."
+                        st()["adguard_last_error"] = (
+                            f"GET {safe_url} returned non-JSON response."
+                        )
                         await log_event(st()["adguard_last_error"])
                         return False, None
 
             if method.upper() == "POST":
-                async with session.post(url, json=payload or {}, auth=auth, timeout=timeout) as resp:
+                async with session.post(
+                    url, json=payload or {}, auth=auth, timeout=timeout
+                ) as resp:
                     text = await resp.text()
                     if resp.status >= 400:
-                        st()["adguard_last_error"] = f"POST {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                        st()["adguard_last_error"] = (
+                            f"POST {safe_url} failed: HTTP {resp.status}: {text[:180]}"
+                        )
                         await log_event(st()["adguard_last_error"])
                         return False, None
                     if text:
@@ -1155,16 +1596,19 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                             return True, text
                     return True, {}
 
-                st()["adguard_last_error"] = f"Unsupported AdGuard method: {method}"
-                await log_event(st()["adguard_last_error"])
-                return False, None
-
-        except Exception as exc:
-            st()["adguard_last_error"] = f"{method.upper()} {safe_url} failed: {type(exc).__name__}: {exc}"
+            st()["adguard_last_error"] = f"Unsupported AdGuard method: {method}"
             await log_event(st()["adguard_last_error"])
-            _LOGGER.exception("Family DEFCON AdGuard %s failed for %s", method.upper(), safe_url)
             return False, None
 
+        except Exception as exc:
+            st()["adguard_last_error"] = (
+                f"{method.upper()} {safe_url} failed: {type(exc).__name__}: {exc}"
+            )
+            await log_event(st()["adguard_last_error"])
+            _LOGGER.exception(
+                "Family DEFCON AdGuard %s failed for %s", method.upper(), safe_url
+            )
+            return False, None
 
     def adguard_rule_for_person(person: str) -> str | None:
         adguard = conf()["dns"]["adguard_home"]
@@ -1204,7 +1648,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                     list(existing.keys()),
                 )
                 st()["adguard_last_status"] = "error"
-                st()["adguard_last_error"] = "AdGuard status response missing user_rules/rules."
+                st()["adguard_last_error"] = (
+                    "AdGuard status response missing user_rules/rules."
+                )
                 st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
                 await save_state()
                 await update_entities()
@@ -1221,7 +1667,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 type(existing).__name__,
             )
             st()["adguard_last_status"] = "error"
-            st()["adguard_last_error"] = f"Unexpected AdGuard status type: {type(existing).__name__}"
+            st()["adguard_last_error"] = (
+                f"Unexpected AdGuard status type: {type(existing).__name__}"
+            )
             st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
             await save_state()
             await update_entities()
@@ -1244,9 +1692,13 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if managed_rules:
             new_rules = cleaned + [start_marker] + managed_rules + [end_marker]
 
-        ok, _ = await adguard_call_json("POST", "/control/filtering/set_rules", {"rules": new_rules})
+        ok, _ = await adguard_call_json(
+            "POST", "/control/filtering/set_rules", {"rules": new_rules}
+        )
         if ok:
-            st()["adguard_applied"] = {person: is_blocked(person) for person in conf()["people"]}
+            st()["adguard_applied"] = {
+                person: is_blocked(person) for person in conf()["people"]
+            }
             st()["adguard_last_status"] = "ok"
             st()["adguard_last_error"] = ""
             st()["adguard_last_sync"] = datetime.now().isoformat(timespec="seconds")
@@ -1297,48 +1749,20 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                     return
             for person in conf()["people"]:
                 actions = people_actions.get(person, {})
-                await call_custom_action(actions.get("block") if is_blocked(person) else actions.get("unblock"))
-
-    def hash_pin_value(pin: str) -> str:
-        """Return a fast salted SHA256 hash string for a 4 digit local dashboard PIN."""
-        salt = secrets.token_hex(16)
-        digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
-        return f"sha256${salt}${digest}"
-
-    def verify_pin_value(pin: str, user_data: dict[str, Any]) -> bool:
-        """Verify fast SHA256 hashes, old PBKDF2 hashes, or legacy plain text PINs."""
-        stored_hash = str(user_data.get("pin_hash", "") or "")
-        if stored_hash:
-            try:
-                parts = stored_hash.split("$")
-                algo = parts[0]
-
-                if algo == "sha256" and len(parts) == 3:
-                    _, salt, expected = parts
-                    digest = hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
-                    return hmac.compare_digest(digest, expected)
-
-                if algo == "pbkdf2_sha256" and len(parts) == 4:
-                    _, iterations_raw, salt, expected = parts
-                    digest = hashlib.pbkdf2_hmac(
-                        "sha256",
-                        str(pin).encode(),
-                        salt.encode(),
-                        int(iterations_raw),
-                    ).hex()
-                    return hmac.compare_digest(digest, expected)
-
-                return False
-            except Exception:
-                return False
-
-        # Backward compatible fallback. Prefer pin_hash in new configs.
-        return hmac.compare_digest(str(user_data.get("pin", "")), str(pin))
+                await call_custom_action(
+                    actions.get("block")
+                    if is_blocked(person)
+                    else actions.get("unblock")
+                )
 
     def station_record(station: str):
         stations = conf()["stations"]
         dashboard = conf().get("dashboard", {})
-        dashboard_station_id = str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+        dashboard_station_id = (
+            str(dashboard.get("station_id", "dashboard"))
+            if isinstance(dashboard, dict)
+            else "dashboard"
+        )
 
         if station in stations:
             return station, stations[station]
@@ -1363,16 +1787,29 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if record is None:
             return False, f"Launch rejected. Unknown station {station}."
         if not record.get("enabled", True):
-            return False, f"Launch rejected. {record.get('name', station_id)} is disabled."
+            return (
+                False,
+                f"Launch rejected. {record.get('name', station_id)} is disabled.",
+            )
 
         if conf()["require_station_match"] and conf()["auth"]["mode"] != "pin":
             commander = record.get("commander")
             if commander and commander != launcher:
-                return False, f"Launch rejected. {record.get('name', station_id)} belongs to {commander}."
+                return (
+                    False,
+                    f"Launch rejected. {record.get('name', station_id)} belongs to {commander}.",
+                )
 
         key_entity = record.get("key_entity")
-        if conf()["require_key_for_launch"] and key_entity and not hass.states.is_state(key_entity, "on"):
-            return False, f"Launch rejected. Key is not active for {record.get('name', station_id)}."
+        if (
+            conf()["require_key_for_launch"]
+            and key_entity
+            and not hass.states.is_state(key_entity, "on")
+        ):
+            return (
+                False,
+                f"Launch rejected. Key is not active for {record.get('name', station_id)}.",
+            )
 
         cooldown = conf()["cooldown_seconds"]
         last_raw = st()["last_station_launch"].get(station_id)
@@ -1380,7 +1817,10 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             try:
                 last = datetime.fromisoformat(last_raw)
                 if (datetime.now() - last).total_seconds() < cooldown:
-                    return False, f"Launch rejected. {record.get('name', station_id)} is cooling down."
+                    return (
+                        False,
+                        f"Launch rejected. {record.get('name', station_id)} is cooling down.",
+                    )
             except Exception:
                 pass
         st()["last_station_launch"][station_id] = datetime.now().isoformat()
@@ -1393,7 +1833,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         base = current if isinstance(current, datetime) and current > now else now
         set_blocked_until(canonical, base + timedelta(minutes=minutes))
 
-    async def reject_launch(reason: str, launcher: str = "", target: str = "", station: str = "") -> None:
+    async def reject_launch(
+        reason: str, launcher: str = "", target: str = "", station: str = ""
+    ) -> None:
         message = f"Launch rejected. {reason}"
         await log_event(message)
         fire_family_event(
@@ -1409,25 +1851,35 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         launcher = canonical_person_name(launcher)
         target = canonical_person_name(target)
         if not st()["armed"]:
-            await reject_launch("Command system is not armed.", launcher, target, station)
+            await reject_launch(
+                "Command system is not armed.", launcher, target, station
+            )
             return
         if not person_in_list(launcher, conf()["people"]):
-            await reject_launch(f"Unknown launcher {launcher}.", launcher, target, station)
+            await reject_launch(
+                f"Unknown launcher {launcher}.", launcher, target, station
+            )
             return
         if not person_in_list(target, valid_targets()):
             await reject_launch(f"{target} is protected.", launcher, target, station)
             return
         if str(launcher).lower() == str(target).lower():
-            await reject_launch("Self targeting is not allowed.", launcher, target, station)
+            await reject_launch(
+                "Self targeting is not allowed.", launcher, target, station
+            )
             return
 
         ok, reason = await validate_station(launcher, station)
         if not ok:
-            await reject_launch(reason.replace("Launch rejected. ", ""), launcher, target, station)
+            await reject_launch(
+                reason.replace("Launch rejected. ", ""), launcher, target, station
+            )
             return
 
         new_launches = st()["daily_launches"] + 1
-        is_retaliation = launcher == st()["last_target"] and target == st()["last_launcher"]
+        is_retaliation = (
+            launcher == st()["last_target"] and target == st()["last_launcher"]
+        )
         new_chain = st()["conflict_chain"] + 1 if is_retaliation else 1
 
         st()["daily_launches"] = new_launches
@@ -1436,7 +1888,10 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         st()["last_target"] = target
 
         p = conf()["penalties"]
-        if new_launches >= conf()["launches_before_mutual_destruction"] or new_chain >= conf()["chain_before_mutual_destruction"]:
+        if (
+            new_launches >= conf()["launches_before_mutual_destruction"]
+            or new_chain >= conf()["chain_before_mutual_destruction"]
+        ):
             st()["mutual_destruction"] = True
             message = f"DEFCON 1. Mutual WiFi Destruction activated by {launcher} targeting {target}."
             await log_event(message)
@@ -1495,7 +1950,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             event_minutes = p["reattack_target_minutes"]
             await add_timeout(target, event_minutes)
             level = current_defcon_level()
-            next_warning = " Next retaliation triggers mutual destruction." if level == 2 else ""
+            next_warning = (
+                " Next retaliation triggers mutual destruction." if level == 2 else ""
+            )
             message = (
                 f"DEFCON {level}. Escalation warning. "
                 f"{launcher} receives +{p['reattacker_extra_minutes']} minutes. "
@@ -1521,7 +1978,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await enforce_now()
 
     async def handle_launch(call: ServiceCall) -> None:
-        await apply_launch(call.data["launcher"], call.data["target"], call.data.get("station", ""))
+        await apply_launch(
+            call.data["launcher"], call.data["target"], call.data.get("station", "")
+        )
 
     async def handle_launch_with_pin(call: ServiceCall) -> None:
         station = call.data.get("station", "")
@@ -1530,7 +1989,12 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if len(pin) > 4:
             message = f"Launch rejected. PIN longer than 4 characters at {station or 'unknown station'}."
             await log_event(message)
-            fire_family_event("launch_rejected", reason="PIN longer than 4 characters.", station=station, message=message)
+            fire_family_event(
+                "launch_rejected",
+                reason="PIN longer than 4 characters.",
+                station=station,
+                message=message,
+            )
             return
         locked_raw = st()["pin_locked_until"].get(station)
         if locked_raw:
@@ -1561,14 +2025,19 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             entry = hass.data.get(DOMAIN, {}).get("config_entry")
             opts = dict(getattr(entry, "options", {}) or {})
             source = "UI options" if bool(opts.get("use_ui_config", False)) else "YAML"
-            advanced = "on" if bool(opts.get("use_advanced_yaml_overrides", False)) else "off"
+            advanced = (
+                "on" if bool(opts.get("use_advanced_yaml_overrides", False)) else "off"
+            )
             hashed_users = [
-                person for person, data in conf()["auth"]["users"].items()
+                person
+                for person, data in conf()["auth"]["users"].items()
                 if isinstance(data, dict) and data.get("pin_hash")
             ]
 
             if attempts >= conf()["auth"]["max_bad_pin_attempts"]:
-                until = datetime.now() + timedelta(seconds=conf()["auth"]["lockout_seconds_after_bad_pins"])
+                until = datetime.now() + timedelta(
+                    seconds=conf()["auth"]["lockout_seconds_after_bad_pins"]
+                )
                 st()["pin_locked_until"][station] = until.isoformat()
                 st()["pin_bad_attempts"][station] = 0
                 message = (
@@ -1622,11 +2091,19 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
     async def handle_set_armed(call: ServiceCall) -> None:
         st()["armed"] = bool(call.data["enabled"])
-        await log_event("Command system armed." if call.data["enabled"] else "Command system disarmed.")
+        await log_event(
+            "Command system armed."
+            if call.data["enabled"]
+            else "Command system disarmed."
+        )
 
     async def handle_set_parent_targets(call: ServiceCall) -> None:
         st()["allow_parent_targets"] = bool(call.data["enabled"])
-        await log_event("Parent 1 and Parent 2 are targetable." if call.data["enabled"] else "Parent 1 and Parent 2 are protected.")
+        await log_event(
+            "Parent 1 and Parent 2 are targetable."
+            if call.data["enabled"]
+            else "Parent 1 and Parent 2 are protected."
+        )
 
     async def handle_enforce_now(call: ServiceCall) -> None:
         await enforce_now()
@@ -1635,7 +2112,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
     async def handle_reload_config(call: ServiceCall) -> None:
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
         if entry is None:
-            _LOGGER.error("Family DEFCON cannot reload because no config entry is active")
+            _LOGGER.error(
+                "Family DEFCON cannot reload because no config entry is active"
+            )
             return
 
         await hass.config_entries.async_reload(entry.entry_id)
@@ -1677,7 +2156,7 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         provider = str(dns.get("provider", ""))
         enabled = bool(dns.get("enabled", False))
         mode = str(dns.get("enforcement_mode", ""))
-        version = "1.1.5"
+        version = INTEGRATION_VERSION
 
         message = (
             f"Family DEFCON debug status v{version}: "
@@ -1692,26 +2171,32 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await update_entities()
 
     async def handle_adguard_connection_test(call: ServiceCall) -> None:
+        """Test UI/YAML AdGuard connection string and credentials."""
         st().setdefault("adguard_last_error", "")
         st().setdefault("adguard_last_status", "unknown")
         st().setdefault("adguard_last_sync", "")
         st().setdefault("adguard_managed_rule_count", 0)
-        """Test UI/YAML AdGuard connection string and credentials."""
         apply_ui_adguard_mapping()
         dns = conf().get("dns", {})
         adguard = dns.get("adguard_home", {})
         base_url = normalize_adguard_base_url(adguard.get("base_url", ""))
         clients = adguard.get("clients", {})
-        connection_source = str(adguard.get("connection_source", "unknown") or "unknown")
+        connection_source = str(
+            adguard.get("connection_source", "unknown") or "unknown"
+        )
         username_set = bool(str(adguard.get("username", "") or ""))
         password_set = bool(str(adguard.get("password", "") or ""))
 
         if not base_url:
-            message = "AdGuard connection test failed: runtime base_url is blank or invalid."
+            message = (
+                "AdGuard connection test failed: runtime base_url is blank or invalid."
+            )
             st()["adguard_last_error"] = message
             await log_event(message)
             if "notify_debug_status" in locals():
-                await notify_debug_status("Family DEFCON AdGuard Connection Test", message)
+                await notify_debug_status(
+                    "Family DEFCON AdGuard Connection Test", message
+                )
             await update_entities()
             return
 
@@ -1756,7 +2241,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         enabled = bool(dns.get("enabled", False))
         mode = str(dns.get("enforcement_mode", ""))
         prefix = str(adguard.get("rule_prefix", ""))
-        connection_source = str(adguard.get("connection_source", "unknown") or "unknown")
+        connection_source = str(
+            adguard.get("connection_source", "unknown") or "unknown"
+        )
         username_set = bool(str(adguard.get("username", "") or ""))
         password_set = bool(str(adguard.get("password", "") or ""))
         st()["adguard_last_status"] = "config_checked"
@@ -1775,7 +2262,6 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             await notify_debug_status("Family DEFCON AdGuard Config Status", message)
         await update_entities()
 
-
     async def handle_config_audit_status(call: ServiceCall) -> None:
         """Log a safe audit of active config variables without exposing PIN values."""
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
@@ -1783,16 +2269,34 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         active = conf()
 
         auth_users = active.get("auth", {}).get("users", {})
-        hash_users = [person for person, data in auth_users.items() if isinstance(data, dict) and data.get("pin_hash")]
-        legacy_pin_users = [person for person, data in auth_users.items() if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")]
+        hash_users = [
+            person
+            for person, data in auth_users.items()
+            if isinstance(data, dict) and data.get("pin_hash")
+        ]
+        legacy_pin_users = [
+            person
+            for person, data in auth_users.items()
+            if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")
+        ]
 
         stations = active.get("stations", {})
         dashboard = active.get("dashboard", {})
-        dashboard_station_id = str(dashboard.get("station_id", "dashboard")) if isinstance(dashboard, dict) else "dashboard"
+        dashboard_station_id = (
+            str(dashboard.get("station_id", "dashboard"))
+            if isinstance(dashboard, dict)
+            else "dashboard"
+        )
         missing_station = dashboard_station_id not in stations
 
-        dashboard_targets = dashboard.get("targets", []) if isinstance(dashboard, dict) else []
-        unknown_targets = [target for target in dashboard_targets if target not in active.get("people", [])]
+        dashboard_targets = (
+            dashboard.get("targets", []) if isinstance(dashboard, dict) else []
+        )
+        unknown_targets = [
+            target
+            for target in dashboard_targets
+            if target not in active.get("people", [])
+        ]
 
         await log_event(
             "Config audit. "
@@ -1812,8 +2316,16 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         opts = dict(getattr(entry, "options", {}) or {})
         use_ui = bool(opts.get("use_ui_config", False))
         users = conf().get("auth", {}).get("users", {})
-        hash_users = [person for person, data in users.items() if isinstance(data, dict) and data.get("pin_hash")]
-        legacy_pin_users = [person for person, data in users.items() if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")]
+        hash_users = [
+            person
+            for person, data in users.items()
+            if isinstance(data, dict) and data.get("pin_hash")
+        ]
+        legacy_pin_users = [
+            person
+            for person, data in users.items()
+            if isinstance(data, dict) and data.get("pin") and not data.get("pin_hash")
+        ]
         await log_event(
             "Auth config source: "
             + ("UI options" if use_ui else "YAML")
@@ -1843,7 +2355,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
                 registry.async_update_entity(old_entity_id, new_entity_id=new_entity_id)
                 changed.append(f"{old_entity_id} → {new_entity_id}")
             elif old_entry is not None and new_entry is not None:
-                skipped.append(f"{old_entity_id} skipped because {new_entity_id} already exists")
+                skipped.append(
+                    f"{old_entity_id} skipped because {new_entity_id} already exists"
+                )
 
         message = "Entity ID migration complete."
         if changed:
@@ -1852,21 +2366,20 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             message += " Skipped: " + "; ".join(skipped) + "."
         await log_event(message)
 
-
-
-
-
-
-
-
-
     async def verify_parent_admin_pin(action_name: str) -> tuple[bool, str]:
         """Validate current dashboard PIN as a parent user PIN."""
-        pin = str(st().get("dashboard_pin", "") or st().get("parent_admin_pin", "") or "")
+        pin = str(
+            st().get("dashboard_pin", "") or st().get("parent_admin_pin", "") or ""
+        )
         if not pin:
             message = f"Parent admin action rejected. PIN required for {action_name}."
             await log_event(message)
-            fire_family_event("parent_admin_rejected", action=action_name, reason="pin_required", message=message)
+            fire_family_event(
+                "parent_admin_rejected",
+                action=action_name,
+                reason="pin_required",
+                message=message,
+            )
             return False, ""
 
         for person, data in conf()["auth"]["users"].items():
@@ -1880,12 +2393,23 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
                 message = f"Parent admin action rejected. {person} is not a parent."
                 await log_event(message)
-                fire_family_event("parent_admin_rejected", action=action_name, launcher=person, reason="not_parent", message=message)
+                fire_family_event(
+                    "parent_admin_rejected",
+                    action=action_name,
+                    launcher=person,
+                    reason="not_parent",
+                    message=message,
+                )
                 return False, str(person)
 
         message = f"Parent admin action rejected. Invalid parent PIN for {action_name}."
         await log_event(message)
-        fire_family_event("parent_admin_rejected", action=action_name, reason="bad_pin", message=message)
+        fire_family_event(
+            "parent_admin_rejected",
+            action=action_name,
+            reason="bad_pin",
+            message=message,
+        )
         return False, ""
 
     async def clear_parent_admin_pin() -> None:
@@ -1898,7 +2422,11 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
     def parent_admin_session_active() -> tuple[bool, str]:
         expires = st().get("parent_admin_confirm_expires")
         confirmed_by = str(st().get("parent_admin_confirmed_by", "") or "")
-        if bool(st().get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+        if (
+            bool(st().get("parent_admin_confirm"))
+            and isinstance(expires, datetime)
+            and expires > datetime.now()
+        ):
             return True, confirmed_by
 
         st()["parent_admin_confirm"] = False
@@ -1917,7 +2445,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             await log_event(message)
         await update_entities()
 
-    async def confirm_parent_admin_session(action_name: str = "confirm_parent_admin") -> tuple[bool, str]:
+    async def confirm_parent_admin_session(
+        action_name: str = "confirm_parent_admin",
+    ) -> tuple[bool, str]:
         ok, parent = await verify_parent_admin_pin(action_name)
         if not ok:
             await clear_parent_admin_session()
@@ -1926,14 +2456,21 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         timeout = int(conf().get("auth", {}).get("pin_timeout_seconds", 60))
         st()["parent_admin_confirm"] = True
         st()["parent_admin_confirmed_by"] = parent
-        st()["parent_admin_confirm_expires"] = datetime.now() + timedelta(seconds=timeout)
+        st()["parent_admin_confirm_expires"] = datetime.now() + timedelta(
+            seconds=timeout
+        )
         st()["parent_admin_pin"] = ""
         st()["dashboard_pin"] = ""
         st()["dashboard_confirm"] = False
 
         message = f"Parent admin confirmed. Approved by {parent}. Controls unlocked for {timeout} seconds."
         await log_event(message)
-        fire_family_event("parent_admin_confirmed", parent=parent, expires_in_seconds=timeout, message=message)
+        fire_family_event(
+            "parent_admin_confirmed",
+            parent=parent,
+            expires_in_seconds=timeout,
+            message=message,
+        )
         await update_entities()
         return True, parent
 
@@ -1942,9 +2479,16 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         if active:
             return True, parent
 
-        message = f"Parent admin action rejected. Confirm parent PIN before {action_name}."
+        message = (
+            f"Parent admin action rejected. Confirm parent PIN before {action_name}."
+        )
         await log_event(message)
-        fire_family_event("parent_admin_rejected", action=action_name, reason="confirm_required", message=message)
+        fire_family_event(
+            "parent_admin_rejected",
+            action=action_name,
+            reason="confirm_required",
+            message=message,
+        )
         await update_entities()
         return False, ""
 
@@ -1952,7 +2496,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         digit = str(call.data["digit"])
         if digit not in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
             return
-        current = "".join(ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit())
+        current = "".join(
+            ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit()
+        )
         if len(current) >= 4:
             return
         st()["dashboard_pin"] = current + digit
@@ -1960,7 +2506,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await update_entities()
 
     async def handle_dashboard_backspace(call: ServiceCall) -> None:
-        current = "".join(ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit())
+        current = "".join(
+            ch for ch in str(st().get("dashboard_pin", "")) if ch.isdigit()
+        )
         st()["dashboard_pin"] = current[:-1]
         st()["dashboard_confirm"] = False
         await update_entities()
@@ -1980,7 +2528,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         target = str(call.data["target"])
         targets = dashboard_targets()
         if target not in targets:
-            await log_event(f"Dashboard target rejected. {target} is not in dashboard targets.")
+            await log_event(
+                f"Dashboard target rejected. {target} is not in dashboard targets."
+            )
             return
         st()["dashboard_target"] = target
         st()["dashboard_confirm"] = False
@@ -2040,7 +2590,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await save_state()
         await update_entities()
 
-    async def apply_launch_with_dashboard_pin(pin: str, target: str, station: str) -> None:
+    async def apply_launch_with_dashboard_pin(
+        pin: str, target: str, station: str
+    ) -> None:
         """Compatibility helper for any older dashboard launch path."""
         launcher = None
         for person, data in conf()["auth"]["users"].items():
@@ -2050,7 +2602,13 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
 
         if not launcher:
             await log_event(f"Bad PIN attempt at {station}.")
-            fire_family_event("bad_pin", station=station, attempts=1, max_attempts=conf()["auth"]["max_bad_pin_attempts"], message=f"Bad PIN attempt at {station}.")
+            fire_family_event(
+                "bad_pin",
+                station=station,
+                attempts=1,
+                max_attempts=conf()["auth"]["max_bad_pin_attempts"],
+                message=f"Bad PIN attempt at {station}.",
+            )
             return
 
         await apply_launch(launcher, target, station)
@@ -2058,16 +2616,22 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
     async def handle_cleanup_target_button_entities(call: ServiceCall) -> None:
         """Remove stale generated target button entity registry entries."""
         remove_old_select_target = bool(call.data.get("remove_old_select_target", True))
-        remove_family_defcon_target_buttons = bool(call.data.get("remove_family_defcon_target_buttons", False))
+        remove_family_defcon_target_buttons = bool(
+            call.data.get("remove_family_defcon_target_buttons", False)
+        )
 
         removed, failed = await cleanup_target_button_entity_registry(
             remove_old_select_target=remove_old_select_target,
             remove_family_defcon_target_buttons=remove_family_defcon_target_buttons,
         )
 
-        message = f"Target button entity cleanup complete. Removed {len(removed)} entities."
+        message = (
+            f"Target button entity cleanup complete. Removed {len(removed)} entities."
+        )
         if remove_family_defcon_target_buttons:
-            message += " Restart Home Assistant so dynamic target buttons are recreated."
+            message += (
+                " Restart Home Assistant so dynamic target buttons are recreated."
+            )
         if failed:
             message += f" Failed to remove {len(failed)} entities."
 
@@ -2081,13 +2645,17 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             message=message,
         )
 
-        removed_lines = "\n".join(f"- {item}" for item in removed) if removed else "None"
+        removed_lines = (
+            "\n".join(f"- {item}" for item in removed) if removed else "None"
+        )
         failed_lines = "\n".join(f"- {item}" for item in failed) if failed else ""
 
         notification = message + "\n\nRemoved:\n" + removed_lines
         if failed_lines:
             notification += "\n\nFailed:\n" + failed_lines
-        notification += "\n\nIf the target buttons do not appear, restart Home Assistant."
+        notification += (
+            "\n\nIf the target buttons do not appear, restart Home Assistant."
+        )
 
         persistent_notification.async_create(
             hass,
@@ -2127,13 +2695,6 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         st()["parent_admin_pin"] = ""
         await update_entities()
 
-
-
-
-
-
-
-
     async def handle_parent_admin_confirm(call: ServiceCall) -> None:
         await confirm_parent_admin_session("confirm_parent_admin")
 
@@ -2149,7 +2710,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await handle_clear_all(call)
         message = f"Parent admin clear all approved by {parent}."
         await log_event(message)
-        fire_family_event("parent_admin_action", action="clear_all", parent=parent, message=message)
+        fire_family_event(
+            "parent_admin_action", action="clear_all", parent=parent, message=message
+        )
 
     async def handle_parent_admin_enforce_now(call: ServiceCall) -> None:
         ok, parent = await require_parent_admin_session("enforce_now")
@@ -2160,7 +2723,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await enforce_now()
         message = f"Parent admin enforce now approved by {parent}."
         await log_event(message)
-        fire_family_event("parent_admin_action", action="enforce_now", parent=parent, message=message)
+        fire_family_event(
+            "parent_admin_action", action="enforce_now", parent=parent, message=message
+        )
 
     async def handle_parent_admin_arm(call: ServiceCall) -> None:
         ok, parent = await require_parent_admin_session("arm")
@@ -2171,7 +2736,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await clear_parent_admin_pin()
         message = f"Parent admin armed command system. Approved by {parent}."
         await log_event(message)
-        fire_family_event("parent_admin_action", action="arm", parent=parent, message=message)
+        fire_family_event(
+            "parent_admin_action", action="arm", parent=parent, message=message
+        )
         await update_entities()
 
     async def handle_parent_admin_disarm(call: ServiceCall) -> None:
@@ -2183,7 +2750,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         await clear_parent_admin_pin()
         message = f"Parent admin disarmed command system. Approved by {parent}."
         await log_event(message)
-        fire_family_event("parent_admin_action", action="disarm", parent=parent, message=message)
+        fire_family_event(
+            "parent_admin_action", action="disarm", parent=parent, message=message
+        )
         await update_entities()
 
     async def handle_parent_admin_cleanup_targets(call: ServiceCall) -> None:
@@ -2218,7 +2787,6 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         )
         await update_entities()
 
-
     def safe_register_service(service_name: str, handler, schema=None) -> None:
         """Register or replace a Family DEFCON service.
 
@@ -2230,7 +2798,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             if hass.services.has_service(DOMAIN, service_name):
                 hass.services.async_remove(DOMAIN, service_name)
         except Exception:
-            _LOGGER.exception("Family DEFCON failed removing old service %s", service_name)
+            _LOGGER.exception(
+                "Family DEFCON failed removing old service %s", service_name
+            )
 
         if schema is None:
             hass.services.async_register(DOMAIN, service_name, handler)
@@ -2238,21 +2808,35 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             hass.services.async_register(DOMAIN, service_name, handler, schema=schema)
         hass.data[DOMAIN].setdefault("registered_services", set()).add(service_name)
 
-    safe_register_service("parent_admin_keypress", handle_parent_admin_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    safe_register_service(
+        "parent_admin_keypress",
+        handle_parent_admin_keypress,
+        schema=DASHBOARD_KEYPRESS_SCHEMA,
+    )
     safe_register_service("parent_admin_backspace", handle_parent_admin_backspace)
     safe_register_service("parent_admin_clear_pin", handle_parent_admin_clear_pin)
     safe_register_service("parent_admin_clear_all", handle_parent_admin_clear_all)
     safe_register_service("parent_admin_enforce_now", handle_parent_admin_enforce_now)
     safe_register_service("parent_admin_arm", handle_parent_admin_arm)
     safe_register_service("parent_admin_disarm", handle_parent_admin_disarm)
-    safe_register_service("parent_admin_cleanup_targets", handle_parent_admin_cleanup_targets)
-    safe_register_service("cleanup_target_button_entities", handle_cleanup_target_button_entities, schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA)
+    safe_register_service(
+        "parent_admin_cleanup_targets", handle_parent_admin_cleanup_targets
+    )
+    safe_register_service(
+        "cleanup_target_button_entities",
+        handle_cleanup_target_button_entities,
+        schema=CLEANUP_TARGET_BUTTON_ENTITIES_SCHEMA,
+    )
     safe_register_service("launch", handle_launch, schema=LAUNCH_SCHEMA)
-    safe_register_service("launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA)
+    safe_register_service(
+        "launch_with_pin", handle_launch_with_pin, schema=LAUNCH_WITH_PIN_SCHEMA
+    )
     safe_register_service("clear_all", handle_clear_all)
     safe_register_service("stand_down", handle_stand_down)
     safe_register_service("set_armed", handle_set_armed, schema=BOOL_SCHEMA)
-    safe_register_service("set_parent_targets", handle_set_parent_targets, schema=BOOL_SCHEMA)
+    safe_register_service(
+        "set_parent_targets", handle_set_parent_targets, schema=BOOL_SCHEMA
+    )
     safe_register_service("enforce_now", handle_enforce_now)
     safe_register_service("reload_config", handle_reload_config)
     safe_register_service("adguard_config_status", handle_adguard_config_status)
@@ -2260,21 +2844,38 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
     safe_register_service("debug_status", handle_debug_status)
     safe_register_service("block_person", handle_block_person, schema=PERSON_SCHEMA)
     safe_register_service("unblock_person", handle_unblock_person, schema=PERSON_SCHEMA)
-    safe_register_service("dashboard_keypress", handle_dashboard_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
+    safe_register_service(
+        "dashboard_keypress",
+        handle_dashboard_keypress,
+        schema=DASHBOARD_KEYPRESS_SCHEMA,
+    )
     safe_register_service("dashboard_backspace", handle_dashboard_backspace)
     safe_register_service("dashboard_clear_pin", handle_dashboard_clear_pin)
     safe_register_service("parent_admin_confirm", handle_parent_admin_confirm)
     safe_register_service("parent_admin_cancel", handle_parent_admin_cancel)
-    safe_register_service("dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA)
-    safe_register_service("dashboard_select_target", handle_dashboard_select_target, schema=DASHBOARD_TARGET_SCHEMA)
+    safe_register_service(
+        "dashboard_set_pin", handle_dashboard_set_pin, schema=DASHBOARD_PIN_SCHEMA
+    )
+    safe_register_service(
+        "dashboard_select_target",
+        handle_dashboard_select_target,
+        schema=DASHBOARD_TARGET_SCHEMA,
+    )
     safe_register_service("hash_pin", handle_hash_pin, schema=HASH_PIN_SCHEMA)
-    safe_register_service("auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA)
-    safe_register_service("config_audit_status", handle_config_audit_status, schema=CONFIG_AUDIT_SCHEMA)
+    safe_register_service(
+        "auth_config_status", handle_auth_config_status, schema=AUTH_SOURCE_SCHEMA
+    )
+    safe_register_service(
+        "config_audit_status", handle_config_audit_status, schema=CONFIG_AUDIT_SCHEMA
+    )
     safe_register_service("migrate_entity_ids", handle_migrate_entity_ids)
 
     async def periodic(now: datetime) -> None:
         today = datetime.now().date().isoformat()
-        if datetime.now().strftime("%H:%M:%S") >= conf()["daily_reset_time"] and st()["last_reset_date"] != today:
+        if (
+            datetime.now().strftime("%H:%M:%S") >= conf()["daily_reset_time"]
+            and st()["last_reset_date"] != today
+        ):
             st()["last_reset_date"] = today
             st()["mutual_destruction"] = False
             st()["daily_launches"] = 0
@@ -2294,7 +2895,9 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
             old_remove_interval()
         except Exception:
             _LOGGER.exception("Family DEFCON failed to remove old periodic timer")
-    hass.data[DOMAIN]["remove_interval"] = async_track_time_interval(hass, periodic, timedelta(minutes=1))
+    hass.data[DOMAIN]["remove_interval"] = async_track_time_interval(
+        hass, periodic, timedelta(minutes=1)
+    )
 
     if not st().get("dashboard_target"):
         targets = dashboard_targets()
@@ -2304,8 +2907,14 @@ async def _async_setup_runtime(hass: HomeAssistant) -> None:
         targets = dashboard_targets()
         if not st().get("dashboard_target"):
             dash = dashboard_config()
-            default_target = str(dash.get("default_target", "")) if isinstance(dash, dict) else ""
-            st()["dashboard_target"] = default_target if default_target in targets else (targets[0] if targets else "")
+            default_target = (
+                str(dash.get("default_target", "")) if isinstance(dash, dict) else ""
+            )
+            st()["dashboard_target"] = (
+                default_target
+                if default_target in targets
+                else (targets[0] if targets else "")
+            )
         st()["dashboard_pin"] = str(st().get("dashboard_pin", ""))
         st()["dashboard_confirm"] = bool(st().get("dashboard_confirm", False))
 

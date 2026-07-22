@@ -106,7 +106,7 @@ dashboard_clear_pin:
 
 dashboard_set_pin:
   name: Dashboard Set PIN
-  description: Set the dashboard PIN entry. Only the first 4 digits are used.
+  description: Set the dashboard PIN entry to exactly 4 digits.
   fields:
     pin:
       name: PIN
@@ -127,7 +127,7 @@ dashboard_select_target:
 
 hash_pin:
   name: Hash PIN
-  description: Generate a fast salted SHA256 hash for a local 4 digit dashboard PIN. The result appears in Home Assistant notifications.
+  description: Generate a responsive salted PBKDF2-SHA256 hash for a local 4 digit dashboard PIN. The result appears in Home Assistant notifications.
   fields:
     pin:
       name: PIN

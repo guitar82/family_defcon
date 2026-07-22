@@ -3,12 +3,16 @@
 The raw dashboard PIN is intentionally not exposed as the Home Assistant entity state.
 The real PIN is kept only in integration memory. The entity state shows masked bullets.
 """
+
 from __future__ import annotations
 
-from homeassistant.components.text import TextEntity
+from homeassistant.components.text import TextEntity, TextMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 
 from .const import DOMAIN, SIGNAL_UPDATE
 from .entity import async_add_entry_entities
@@ -33,7 +37,7 @@ class DashboardPinText(TextEntity):
     _attr_unique_id = "family_defcon_dashboard_pin"
     _attr_suggested_object_id = "family_defcon_dashboard_pin"
     _attr_has_entity_name = True
-    _attr_mode = "password"
+    _attr_mode = TextMode.PASSWORD
     _attr_native_max = 4
     _attr_should_poll = False
 
@@ -54,17 +58,20 @@ class DashboardPinText(TextEntity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPDATE, self.async_write_ha_state
+            )
         )
 
 
 class ParentAdminPinText(TextEntity):
     """Hidden parent admin PIN input. Raw value is not exposed as entity state."""
+
     _attr_name = "Parent Admin PIN"
     _attr_unique_id = "family_defcon_parent_admin_pin"
     _attr_suggested_object_id = "family_defcon_parent_admin_pin"
     _attr_has_entity_name = True
-    _attr_mode = "password"
+    _attr_mode = TextMode.PASSWORD
     _attr_native_max = 4
     _attr_should_poll = False
 
@@ -84,5 +91,7 @@ class ParentAdminPinText(TextEntity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPDATE, self.async_write_ha_state
+            )
         )

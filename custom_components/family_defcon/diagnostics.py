@@ -14,6 +14,7 @@ from .const import DOMAIN
 TO_REDACT = {
     "adguard_password_secret",
     "adguard_username_secret",
+    "auth_users_yaml",
     "dashboard_pin",
     "parent_admin_pin",
     "password",

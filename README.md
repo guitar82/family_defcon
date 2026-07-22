@@ -28,7 +28,7 @@ Family members can launch timed internet restrictions against configured targets
 
 ## Requirements
 
-- Home Assistant 2024.6.0 or newer
+- Home Assistant 2024.12.0 or newer
 - HACS 2.0.0 or newer for HACS installation
 - AdGuard Home reachable from Home Assistant
 - AdGuard Home clients configured with stable names, IP addresses, or identifiers that match the Family DEFCON person mappings
@@ -77,6 +77,7 @@ config/
         ├── __init__.py
         ├── binary_sensor.py
         ├── button.py
+        ├── config_helpers.py
         ├── config_flow.py
         ├── const.py
         ├── diagnostics.py
@@ -118,7 +119,11 @@ Each person can have:
 - Parent-target eligibility
 - Dashboard-target visibility
 
-Plain PINs entered through the options flow are write-only. The integration stores a salted hash rather than the entered PIN.
+Plain PINs entered through the options flow are write-only. Leave the PIN field
+blank to keep the saved PIN for that row, including when renaming a person, or
+select **Clear saved PIN** to remove it. New PINs are stored as responsive
+PBKDF2-SHA256 hashes rather than plaintext; hashes from earlier versions remain
+supported.
 
 ### Stations
 
@@ -138,7 +143,8 @@ Each station can have:
 
 ### AdGuard Home
 
-Enter the base URL for the AdGuard Home server, without a `/control` suffix.
+Enter the base URL for the AdGuard Home server. A trailing `/control` suffix is
+accepted and removed automatically.
 
 Examples:
 
@@ -146,12 +152,6 @@ Examples:
 http://192.168.1.10:3000
 http://homeassistant.local:3000
 https://adguard.example.com
-```
-
-Do not enter:
-
-```text
-http://192.168.1.10:3000/control
 ```
 
 Store the AdGuard credentials in `secrets.yaml`:
@@ -520,6 +520,11 @@ Keep real launch and administrative logic in Home Assistant services or scripts 
 - Native HACS custom-repository layout without a release ZIP dependency
 - Redacted downloadable diagnostics
 - Automated HACS and Hassfest validation
+- Native URL, time, number, entity, and translated select controls in Configure
+- Cross-field checks for duplicate people, colliding entity IDs, station IDs,
+  dashboard targets, AdGuard URLs, and advanced YAML
+- Automatic migration of legacy plaintext option PINs to responsive
+  PBKDF2-SHA256 hashes
 
 ## Support
 

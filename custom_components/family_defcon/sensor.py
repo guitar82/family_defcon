@@ -1,8 +1,9 @@
 """Sensors for Family DEFCON."""
+
 from __future__ import annotations
 
 from datetime import datetime
-import re
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -11,14 +12,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN, SIGNAL_UPDATE
-from .entity import async_add_entry_entities
+from .config_helpers import slugify_identifier
+from .entity import async_add_entry_entities, async_remove_stale_entry_entities
 
-
-def _entity_slug(name: str) -> str:
-    """Build the entity slug used by generated person sensors."""
-    slug = re.sub(r"[^a-z0-9_]+", "_", str(name).strip().lower())
-    slug = re.sub(r"_+", "_", slug)
-    return slug.strip("_")
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -44,15 +41,41 @@ async def async_setup_entry(
         AdGuardManagedRuleCountSensor(hass),
     ]
 
+    active_person_unique_ids: set[str] = set()
     for person in hass.data[DOMAIN]["config"].get("people", []):
+        slug = slugify_identifier(person)
+        person_unique_ids = {
+            f"family_defcon_{slug}_wifi_status",
+            f"family_defcon_{slug}_wifi_minutes_remaining",
+        }
+        if active_person_unique_ids.intersection(person_unique_ids):
+            _LOGGER.warning(
+                "Skipping person %s because its entity ID conflicts with another person",
+                person,
+            )
+            continue
+        active_person_unique_ids.update(person_unique_ids)
         entities.append(PersonWifiStatusSensor(hass, person))
         entities.append(PersonMinutesRemainingSensor(hass, person))
+
+    removed = async_remove_stale_entry_entities(
+        hass,
+        entry,
+        active_person_unique_ids,
+        unique_id_suffixes=("_wifi_status", "_wifi_minutes_remaining"),
+    )
+    if removed:
+        _LOGGER.info(
+            "Removed %s stale person sensor registry entries after configuration reload",
+            len(removed),
+        )
 
     async_add_entry_entities(entry, async_add_entities, entities)
 
 
 class Base(SensorEntity):
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -67,7 +90,9 @@ class Base(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPDATE, self.async_write_ha_state
+            )
         )
 
     def _canonical_person_name(self, person: str) -> str:
@@ -97,7 +122,9 @@ class Base(SensorEntity):
         if not self.s.get("mutual_destruction", False):
             return False
 
-        scope = str(self.c.get("dns", {}).get("mutual_destruction_scope", "default_targets")).lower()
+        scope = str(
+            self.c.get("dns", {}).get("mutual_destruction_scope", "default_targets")
+        ).lower()
         if scope in ("all", "everyone", "people", "all_people"):
             return self._list_contains_person(self.c.get("people", []), person)
 
@@ -131,9 +158,13 @@ class DefconLevelSensor(Base):
         conflict_chain = int(self.s.get("conflict_chain", 0))
         launch_limit = int(self.c.get("launches_before_mutual_destruction", 5))
         chain_limit = int(self.c.get("chain_before_mutual_destruction", 4))
-        active_block_count = sum(1 for person in self.c.get("people", []) if self._person_snapshot(person)[1])
+        active_block_count = sum(
+            1 for person in self.c.get("people", []) if self._person_snapshot(person)[1]
+        )
 
-        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (chain_limit > 1 and conflict_chain >= chain_limit - 1):
+        if (launch_limit > 1 and daily_launches >= launch_limit - 1) or (
+            chain_limit > 1 and conflict_chain >= chain_limit - 1
+        ):
             return 2
 
         if conflict_chain >= 2 or active_block_count >= 2:
@@ -152,7 +183,13 @@ class PeaceStatusSensor(Base):
 
     @property
     def native_value(self):
-        return {1: "Mutual WiFi Destruction", 2: "Red", 3: "Yellow", 4: "Watch", 5: "Green"}.get(
+        return {
+            1: "Mutual WiFi Destruction",
+            2: "Red",
+            3: "Yellow",
+            4: "Watch",
+            5: "Green",
+        }.get(
             DefconLevelSensor(self.hass).native_value,
             "Unknown",
         )
@@ -272,24 +309,32 @@ class DashboardPeopleSensor(Base):
     @property
     def extra_state_attributes(self):
         people = []
-        blocked_keys = sorted(str(key) for key in self.s.get("blocked_until", {}).keys())
+        blocked_keys = sorted(
+            str(key) for key in self.s.get("blocked_until", {}).keys()
+        )
 
         for raw_person in self.c.get("people", []):
             person = self._canonical_person_name(str(raw_person))
-            slug = _entity_slug(person)
+            slug = slugify_identifier(person)
             status, blocked, minutes = self._person_snapshot(person)
 
-            people.append({
-                "name": person,
-                "slug": slug,
-                "status": status,
-                "blocked": blocked,
-                "minutes_remaining": minutes,
-                "status_entity": f"sensor.family_defcon_{slug}_wifi_status",
-                "minutes_entity": f"sensor.family_defcon_{slug}_wifi_minutes_remaining",
-                "is_default_target": self._list_contains_person(self.c.get("default_targets", []), person),
-                "is_parent_target": self._list_contains_person(self.c.get("parent_targets", []), person),
-            })
+            people.append(
+                {
+                    "name": person,
+                    "slug": slug,
+                    "status": status,
+                    "blocked": blocked,
+                    "minutes_remaining": minutes,
+                    "status_entity": f"sensor.family_defcon_{slug}_wifi_status",
+                    "minutes_entity": f"sensor.family_defcon_{slug}_wifi_minutes_remaining",
+                    "is_default_target": self._list_contains_person(
+                        self.c.get("default_targets", []), person
+                    ),
+                    "is_parent_target": self._list_contains_person(
+                        self.c.get("parent_targets", []), person
+                    ),
+                }
+            )
 
         return {
             "people": people,
@@ -302,7 +347,7 @@ class PersonWifiStatusSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass)
         self.person = str(person)
-        slug = _entity_slug(person)
+        slug = slugify_identifier(person)
         self._attr_name = f"{person} WiFi Status"
         self._attr_unique_id = f"family_defcon_{slug}_wifi_status"
         self._attr_suggested_object_id = f"family_defcon_{slug}_wifi_status"
@@ -318,7 +363,9 @@ class PersonWifiStatusSensor(Base):
             "blocked": blocked,
             "minutes_remaining": minutes,
             "status": status,
-            "blocked_until_keys": sorted(str(key) for key in self.s.get("blocked_until", {}).keys()),
+            "blocked_until_keys": sorted(
+                str(key) for key in self.s.get("blocked_until", {}).keys()
+            ),
         }
 
 
@@ -326,7 +373,7 @@ class PersonMinutesRemainingSensor(Base):
     def __init__(self, hass, person):
         super().__init__(hass)
         self.person = str(person)
-        slug = _entity_slug(person)
+        slug = slugify_identifier(person)
         self._attr_name = f"{person} WiFi Minutes Remaining"
         self._attr_unique_id = f"family_defcon_{slug}_wifi_minutes_remaining"
         self._attr_suggested_object_id = f"family_defcon_{slug}_wifi_minutes_remaining"
@@ -355,7 +402,11 @@ class ParentAdminConfirmedBySensor(Base):
     @property
     def native_value(self):
         expires = self.s.get("parent_admin_confirm_expires")
-        if bool(self.s.get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+        if (
+            bool(self.s.get("parent_admin_confirm"))
+            and isinstance(expires, datetime)
+            and expires > datetime.now()
+        ):
             return str(self.s.get("parent_admin_confirmed_by", "") or "Unknown")
         return "None"
 
@@ -369,7 +420,11 @@ class ParentAdminStatusSensor(Base):
     @property
     def native_value(self):
         expires = self.s.get("parent_admin_confirm_expires")
-        if bool(self.s.get("parent_admin_confirm")) and isinstance(expires, datetime) and expires > datetime.now():
+        if (
+            bool(self.s.get("parent_admin_confirm"))
+            and isinstance(expires, datetime)
+            and expires > datetime.now()
+        ):
             return "confirmed"
         return "not_confirmed"
 
