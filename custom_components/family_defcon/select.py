@@ -1,15 +1,31 @@
 """Select entities for Family DEFCON dashboard launch interface."""
+
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 
 from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([DashboardTargetSelect(hass)], True)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up the Family DEFCON target selector from a config entry."""
+    async_add_entry_entities(
+        entry,
+        async_add_entities,
+        [DashboardTargetSelect(hass)],
+        update_before_add=True,
+    )
 
 
 class DashboardTargetSelect(SelectEntity):
@@ -31,9 +47,15 @@ class DashboardTargetSelect(SelectEntity):
         people = set(config.get("people", []))
 
         if isinstance(configured, list) and configured:
-            return [str(item) for item in configured if not people or str(item) in people]
+            return [
+                str(item) for item in configured if not people or str(item) in people
+            ]
 
-        fallback = list(dict.fromkeys(config.get("default_targets", []) + config.get("parent_targets", [])))
+        fallback = list(
+            dict.fromkeys(
+                config.get("default_targets", []) + config.get("parent_targets", [])
+            )
+        )
         return [str(item) for item in fallback if not people or str(item) in people]
 
     @property
@@ -53,5 +75,7 @@ class DashboardTargetSelect(SelectEntity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, SIGNAL_UPDATE, self.async_write_ha_state
+            )
         )

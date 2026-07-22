@@ -22,11 +22,13 @@ Family members can launch timed internet restrictions against configured targets
 - AdGuard Home custom-rule enforcement
 - Safe replacement of only the rules managed by Family DEFCON
 - Diagnostic, configuration-audit, migration, and cleanup services
-- HACS-compatible release package
+- Native config-entry setup, reload, and unload support
+- Redacted Home Assistant diagnostics downloads
+- HACS custom-repository installation
 
 ## Requirements
 
-- Home Assistant 2024.6.0 or newer
+- Home Assistant 2024.12.0 or newer
 - HACS 2.0.0 or newer for HACS installation
 - AdGuard Home reachable from Home Assistant
 - AdGuard Home clients configured with stable names, IP addresses, or identifiers that match the Family DEFCON person mappings
@@ -35,6 +37,8 @@ Family members can launch timed internet restrictions against configured targets
 ## Installation
 
 ### HACS custom repository
+
+[![Open your Home Assistant instance and add this repository to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=guitar82&repository=family_defcon&category=integration)
 
 1. Open **HACS** in Home Assistant.
 2. Select **Integrations**.
@@ -51,11 +55,10 @@ Family members can launch timed internet restrictions against configured targets
 8. Go to **Settings > Devices & services > Add integration**.
 9. Search for **Family DEFCON**.
 
-The current HACS release asset is:
-
-```text
-family_defcon_v1_1_5.zip
-```
+HACS installs the integration directly from `custom_components/family_defcon`.
+No separately named release ZIP is required. Published GitHub releases provide
+versioned upgrades; the default branch remains available for custom-repository
+testing.
 
 ### Manual installation
 
@@ -69,21 +72,24 @@ The final structure should look like:
 
 ```text
 config/
-âââ custom_components/
-    âââ family_defcon/
-        âââ __init__.py
-        âââ binary_sensor.py
-        âââ button.py
-        âââ config_flow.py
-        âââ const.py
-        âââ manifest.json
-        âââ select.py
-        âââ sensor.py
-        âââ services.yaml
-        âââ strings.json
-        âââ switch.py
-        âââ text.py
-        âââ translations/
+└── custom_components/
+    └── family_defcon/
+        ├── __init__.py
+        ├── binary_sensor.py
+        ├── button.py
+        ├── config_helpers.py
+        ├── config_flow.py
+        ├── const.py
+        ├── diagnostics.py
+        ├── entity.py
+        ├── manifest.json
+        ├── select.py
+        ├── sensor.py
+        ├── services.yaml
+        ├── strings.json
+        ├── switch.py
+        ├── text.py
+        └── translations/
 ```
 
 Restart Home Assistant, then add the integration from **Settings > Devices & services**.
@@ -113,7 +119,11 @@ Each person can have:
 - Parent-target eligibility
 - Dashboard-target visibility
 
-Plain PINs entered through the options flow are write-only. The integration stores a salted hash rather than the entered PIN.
+Plain PINs entered through the options flow are write-only. Leave the PIN field
+blank to keep the saved PIN for that row, including when renaming a person, or
+select **Clear saved PIN** to remove it. New PINs are stored as responsive
+PBKDF2-SHA256 hashes rather than plaintext; hashes from earlier versions remain
+supported.
 
 ### Stations
 
@@ -133,7 +143,8 @@ Each station can have:
 
 ### AdGuard Home
 
-Enter the base URL for the AdGuard Home server, without a `/control` suffix.
+Enter the base URL for the AdGuard Home server. A trailing `/control` suffix is
+accepted and removed automatically.
 
 Examples:
 
@@ -141,12 +152,6 @@ Examples:
 http://192.168.1.10:3000
 http://homeassistant.local:3000
 https://adguard.example.com
-```
-
-Do not enter:
-
-```text
-http://192.168.1.10:3000/control
 ```
 
 Store the AdGuard credentials in `secrets.yaml`:
@@ -369,17 +374,14 @@ Diagnostic results are written to the Home Assistant log, Family DEFCON event st
 
 ## Updating configuration
 
-Most existing settings are refreshed when options are saved.
+Saving options reloads the Family DEFCON config entry. Home Assistant cleanly
+unloads and rebuilds all six entity platforms, so newly added or renamed people,
+person sensors, selects, and target buttons appear without restarting Home
+Assistant.
 
-Because version 1.1.5 still uses legacy entity-platform loading, restart Home Assistant after:
-
-- Adding a person
-- Removing a person
-- Renaming a person
-- Adding or removing dashboard targets
-- Changing generated target-button structure
-
-This ensures dynamically generated entities are recreated cleanly.
+The entity registry may retain unavailable entries for names that no longer
+exist. If those old entries remain, run
+`family_defcon.cleanup_target_button_entities` and reload the integration.
 
 ## Cleaning stale target buttons
 
@@ -398,7 +400,12 @@ data:
   remove_family_defcon_target_buttons: false
 ```
 
-Restart Home Assistant afterward.
+Reload the Family DEFCON integration afterward.
+
+If you intentionally want to remove current generated Family DEFCON target-button
+registry entries too, set `remove_family_defcon_target_buttons: true`. Use that
+when cleaning up renamed-away `button.family_defcon_select_target_*` entities.
+The active buttons will be recreated after a config-entry reload or restart.
 
 The current generated target buttons should use:
 
@@ -431,11 +438,15 @@ button.family_defcon_select_target_*
 
 ### New target buttons do not appear
 
-Restart Home Assistant after adding or renaming people or changing dashboard targets.
+Save the Family DEFCON options again or run `family_defcon.reload_config`.
+Both actions now perform a full config-entry reload and rebuild the generated
+entities.
 
 ### Duplicate or stale buttons remain
 
-Run `family_defcon.cleanup_target_button_entities`, then restart Home Assistant.
+Run `family_defcon.cleanup_target_button_entities` with
+`remove_family_defcon_target_buttons: true`, then reload the Family DEFCON
+integration. Active target buttons are recreated from the current config.
 
 ### Services are missing after an update
 
@@ -443,7 +454,11 @@ Restart Home Assistant and confirm the installed integration version under **Set
 
 ### View safe runtime diagnostics
 
-Run:
+Open **Settings > Devices & services > Family DEFCON**, open the integration's
+menu, and select **Download diagnostics**. PINs, PIN hashes, and AdGuard
+credentials are redacted from the downloaded file.
+
+For a quick on-screen status report, run:
 
 ```yaml
 action: family_defcon.debug_status
@@ -498,12 +513,18 @@ Keep real launch and administrative logic in Home Assistant services or scripts 
 
 ## Release notes
 
-### v1.1.5
+### v2.0.0 beta 1
 
-- HACS-compliant release packaging
-- Corrected generated target-button display names
-- Dashboard target buttons now show configured person names instead of raw object IDs
-- Current release asset: `family_defcon_v1_1_5.zip`
+- Modern Home Assistant config-entry platform lifecycle
+- Full entity rebuild after options or YAML reloads
+- Native HACS custom-repository layout without a release ZIP dependency
+- Redacted downloadable diagnostics
+- Automated HACS and Hassfest validation
+- Native URL, time, number, entity, and translated select controls in Configure
+- Cross-field checks for duplicate people, colliding entity IDs, station IDs,
+  dashboard targets, AdGuard URLs, and advanced YAML
+- Automatic migration of legacy plaintext option PINs to responsive
+  PBKDF2-SHA256 hashes
 
 ## Support
 

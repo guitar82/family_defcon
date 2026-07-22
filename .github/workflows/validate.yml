@@ -1,0 +1,61 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint Python
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          version: "0.15.22"
+          args: check
+          src: >-
+            custom_components/family_defcon
+            tests
+      - name: Check Python formatting
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          version: "0.15.22"
+          args: format --check
+          src: >-
+            custom_components/family_defcon
+            tests
+      - name: Compile integration
+        run: python -m compileall -q custom_components/family_defcon
+      - name: Run configuration helper tests
+        run: python -m unittest discover -s tests -v
+
+  validate-hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  validate-hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master

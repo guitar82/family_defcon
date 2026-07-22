@@ -6,12 +6,20 @@
         "description": "Set up Family DEFCON. More settings are available after setup from Configure.",
         "data": {
           "name": "Name",
-          "config_file": "Fallback config file",
           "cooldown_seconds": "Launch cooldown seconds",
           "dns_enabled": "Enable DNS enforcement",
           "adguard_base_url": "AdGuard Home URL"
+        },
+        "data_description": {
+          "name": "The device and integration name shown in Home Assistant.",
+          "cooldown_seconds": "Minimum time between accepted launches.",
+          "dns_enabled": "Apply internet restrictions through AdGuard Home.",
+          "adguard_base_url": "Optional fallback URL, such as http://192.168.1.10:3000. Leave blank to use the Home Assistant AdGuard integration."
         }
       }
+    },
+    "error": {
+      "invalid_url": "Enter a valid HTTP or HTTPS AdGuard Home URL without credentials, query parameters, or a path."
     },
     "abort": {
       "already_configured": "Family DEFCON is already configured."
@@ -32,68 +40,68 @@
       },
       "people": {
         "title": "People, PINs, and AdGuard clients",
-        "description": "Each person gets their own fields. Leave unused person names blank.",
+        "description": "Configure up to eight people. PINs are write-only: leave a PIN blank to keep the saved PIN for that row, including when renaming a person. Select clear saved PIN to remove it. Leave unused person names blank.",
         "data": {
           "person_1_name": "Person 1 name",
           "person_1_role": "Person 1 role",
-          "person_1_pin": "Person 1 new PIN, hidden, max 4 characters",
-          "person_1_pin_hash": "Person 1 saved PIN hash",
+          "person_1_pin": "Person 1 new 4-digit PIN",
+          "person_1_clear_pin": "Clear Person 1 saved PIN",
           "person_1_adguard_client": "Person 1 AdGuard client name",
           "person_1_default_target": "Person 1 is child/default target",
           "person_1_parent_target": "Person 1 is parent target",
           "person_1_dashboard_target": "Person 1 shows on dashboard",
           "person_2_name": "Person 2 name",
           "person_2_role": "Person 2 role",
-          "person_2_pin": "Person 2 new PIN, hidden, max 4 characters",
-          "person_2_pin_hash": "Person 2 saved PIN hash",
+          "person_2_pin": "Person 2 new 4-digit PIN",
+          "person_2_clear_pin": "Clear Person 2 saved PIN",
           "person_2_adguard_client": "Person 2 AdGuard client name",
           "person_2_default_target": "Person 2 is child/default target",
           "person_2_parent_target": "Person 2 is parent target",
           "person_2_dashboard_target": "Person 2 shows on dashboard",
           "person_3_name": "Person 3 name",
           "person_3_role": "Person 3 role",
-          "person_3_pin": "Person 3 new PIN, hidden, max 4 characters",
-          "person_3_pin_hash": "Person 3 saved PIN hash",
+          "person_3_pin": "Person 3 new 4-digit PIN",
+          "person_3_clear_pin": "Clear Person 3 saved PIN",
           "person_3_adguard_client": "Person 3 AdGuard client name",
           "person_3_default_target": "Person 3 is child/default target",
           "person_3_parent_target": "Person 3 is parent target",
           "person_3_dashboard_target": "Person 3 shows on dashboard",
           "person_4_name": "Person 4 name",
           "person_4_role": "Person 4 role",
-          "person_4_pin": "Person 4 new PIN, hidden, max 4 characters",
-          "person_4_pin_hash": "Person 4 saved PIN hash",
+          "person_4_pin": "Person 4 new 4-digit PIN",
+          "person_4_clear_pin": "Clear Person 4 saved PIN",
           "person_4_adguard_client": "Person 4 AdGuard client name",
           "person_4_default_target": "Person 4 is child/default target",
           "person_4_parent_target": "Person 4 is parent target",
           "person_4_dashboard_target": "Person 4 shows on dashboard",
           "person_5_name": "Person 5 name",
           "person_5_role": "Person 5 role",
-          "person_5_pin": "Person 5 new PIN, hidden, max 4 characters",
-          "person_5_pin_hash": "Person 5 saved PIN hash",
+          "person_5_pin": "Person 5 new 4-digit PIN",
+          "person_5_clear_pin": "Clear Person 5 saved PIN",
           "person_5_adguard_client": "Person 5 AdGuard client name",
           "person_5_default_target": "Person 5 is child/default target",
           "person_5_parent_target": "Person 5 is parent target",
           "person_5_dashboard_target": "Person 5 shows on dashboard",
           "person_6_name": "Person 6 name",
           "person_6_role": "Person 6 role",
-          "person_6_pin": "Person 6 new PIN, hidden, max 4 characters",
-          "person_6_pin_hash": "Person 6 saved PIN hash",
+          "person_6_pin": "Person 6 new 4-digit PIN",
+          "person_6_clear_pin": "Clear Person 6 saved PIN",
           "person_6_adguard_client": "Person 6 AdGuard client name",
           "person_6_default_target": "Person 6 is child/default target",
           "person_6_parent_target": "Person 6 is parent target",
           "person_6_dashboard_target": "Person 6 shows on dashboard",
           "person_7_name": "Person 7 name",
           "person_7_role": "Person 7 role",
-          "person_7_pin": "Person 7 new PIN, hidden, max 4 characters",
-          "person_7_pin_hash": "Person 7 saved PIN hash",
+          "person_7_pin": "Person 7 new 4-digit PIN",
+          "person_7_clear_pin": "Clear Person 7 saved PIN",
           "person_7_adguard_client": "Person 7 AdGuard client name",
           "person_7_default_target": "Person 7 is child/default target",
           "person_7_parent_target": "Person 7 is parent target",
           "person_7_dashboard_target": "Person 7 shows on dashboard",
           "person_8_name": "Person 8 name",
           "person_8_role": "Person 8 role",
-          "person_8_pin": "Person 8 new PIN, hidden, max 4 characters",
-          "person_8_pin_hash": "Person 8 saved PIN hash",
+          "person_8_pin": "Person 8 new 4-digit PIN",
+          "person_8_clear_pin": "Clear Person 8 saved PIN",
           "person_8_adguard_client": "Person 8 AdGuard client name",
           "person_8_default_target": "Person 8 is child/default target",
           "person_8_parent_target": "Person 8 is parent target",
@@ -102,7 +110,7 @@
       },
       "system": {
         "title": "System and escalation settings",
-        "description": "Core Family DEFCON behavior.",
+        "description": "Core Family DEFCON behavior. Numeric settings use bounded number fields and the reset time uses Home Assistant's time picker.",
         "data": {
           "use_ui_config": "Use UI configuration instead of YAML",
           "cooldown_seconds": "Launch cooldown seconds",
@@ -120,7 +128,7 @@
       },
       "stations": {
         "title": "Stations and dashboard",
-        "description": "Dashboard and hardware terminal/station setup.",
+        "description": "Dashboard and hardware terminal/station setup. Station IDs must be unique, and the dashboard station must match one of them.",
         "data": {
           "dashboard_station_id": "Dashboard station ID",
           "dashboard_default_target": "Dashboard default target",
@@ -160,7 +168,7 @@
       },
       "adguard": {
         "title": "AdGuard enforcement settings",
-        "description": "AdGuard client names are set on the People page.",
+        "description": "AdGuard client names are set on the People page. The Home Assistant AdGuard integration is preferred; the URL and secret fields are fallbacks.",
         "data": {
           "dns_enabled": "Enable DNS enforcement",
           "adguard_base_url": "Fallback AdGuard Home URL",
@@ -198,7 +206,42 @@
       }
     },
     "error": {
-      "pin_too_long": "PIN must be 4 characters or fewer."
+      "dashboard_target_required": "Select at least one person to show on the dashboard.",
+      "duplicate_person": "Person names must be unique.",
+      "duplicate_person_identifier": "This name creates the same entity ID as another person. Choose a more distinct name.",
+      "duplicate_station": "Station IDs must be unique.",
+      "invalid_person_name": "Enter a name containing at least one letter or number.",
+      "invalid_pin": "Enter exactly four digits.",
+      "invalid_time": "Select a valid daily reset time.",
+      "invalid_url": "Enter a valid HTTP or HTTPS AdGuard Home URL without credentials, query parameters, or a path.",
+      "invalid_yaml": "Fix the YAML syntax before saving.",
+      "invalid_yaml_type": "This YAML field has the wrong structure. People must be a list; other override fields must be mappings.",
+      "invalid_yaml_value": "Penalty override values must be numbers from 1 through 999.",
+      "people_required": "Configure at least one person.",
+      "person_name_required": "Enter a person name before setting a PIN.",
+      "plaintext_pin_not_allowed": "Plaintext PINs are not allowed in advanced auth YAML. Configure PINs on the People page or use a pin_hash value.",
+      "station_required": "Configure at least one station.",
+      "unknown_station": "The dashboard station ID must match a configured station."
+    }
+  },
+  "selector": {
+    "person_role": {
+      "options": {
+        "parent": "Parent",
+        "child": "Child"
+      }
+    },
+    "enforcement_mode": {
+      "options": {
+        "active": "Active",
+        "disabled": "Disabled"
+      }
+    },
+    "mutual_destruction_scope": {
+      "options": {
+        "default_targets": "Default targets",
+        "all": "Everyone"
+      }
     }
   }
 }
