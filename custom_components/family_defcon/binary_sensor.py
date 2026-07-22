@@ -2,12 +2,19 @@
 from __future__ import annotations
 from datetime import datetime
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up Family DEFCON binary sensors from a config entry."""
+    async_add_entry_entities(entry, async_add_entities, [
         MutualDestructionBinarySensor(hass),
         DashboardTargetConfirmedSensor(hass),
         ParentAdminConfirmedBinarySensor(hass),

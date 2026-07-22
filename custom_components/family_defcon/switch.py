@@ -1,12 +1,23 @@
 """Switches for Family DEFCON."""
 from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([ArmedSwitch(hass), AllowParentTargetsSwitch(hass)])
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up Family DEFCON switches from a config entry."""
+    async_add_entry_entities(
+        entry,
+        async_add_entities,
+        [ArmedSwitch(hass), AllowParentTargetsSwitch(hass)],
+    )
 
 class BaseSwitch(SwitchEntity):
     _attr_has_entity_name = True

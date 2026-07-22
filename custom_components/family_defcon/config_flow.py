@@ -203,7 +203,7 @@ def _build_station_options(user_input: dict[str, Any], existing: dict[str, Any])
 class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Family DEFCON."""
 
-    VERSION = 4
+    VERSION = 5
 
     @staticmethod
     def async_get_options_flow(config_entry):
@@ -211,6 +211,9 @@ class FamilyDefconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Initial setup."""
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
+
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
 

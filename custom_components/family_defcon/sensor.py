@@ -6,10 +6,12 @@ import re
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
 
 def _entity_slug(name: str) -> str:
@@ -19,7 +21,12 @@ def _entity_slug(name: str) -> str:
     return slug.strip("_")
 
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up Family DEFCON sensors from a config entry."""
     entities = [
         DefconLevelSensor(hass),
         PeaceStatusSensor(hass),
@@ -41,7 +48,7 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
         entities.append(PersonWifiStatusSensor(hass, person))
         entities.append(PersonMinutesRemainingSensor(hass, person))
 
-    async_add_entities(entities)
+    async_add_entry_entities(entry, async_add_entities, entities)
 
 
 class Base(SensorEntity):

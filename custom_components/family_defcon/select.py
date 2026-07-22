@@ -2,14 +2,26 @@
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 
 from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
-    async_add_entities([DashboardTargetSelect(hass)], True)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up the Family DEFCON target selector from a config entry."""
+    async_add_entry_entities(
+        entry,
+        async_add_entities,
+        [DashboardTargetSelect(hass)],
+        update_before_add=True,
+    )
 
 
 class DashboardTargetSelect(SelectEntity):

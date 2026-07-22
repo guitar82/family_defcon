@@ -1,12 +1,4 @@
-"""Button entities for Family DEFCON dashboard launch interface.
-
-Stable v5.8.5 note:
-This file is based on the working v5.8 backend. It only improves dashboard button behavior:
-- Confirm validates the PIN before turning target confirmation on.
-- Wrong PIN keeps dashboard_confirm false.
-- Launch button sends launch_with_pin non-blocking so the dashboard responds quickly.
-- Newly saved UI PIN hashes use instant salted SHA256 for faster local dashboard response.
-"""
+"""Button entities for the Family DEFCON dashboard interface."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -15,10 +7,12 @@ import hmac
 import re
 
 from homeassistant.components.button import ButtonEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 
-from .const import DOMAIN, SIGNAL_TARGET_BUTTONS_UPDATE, SIGNAL_UPDATE
+from .const import DOMAIN, SIGNAL_UPDATE
+from .entity import async_add_entry_entities
 
 
 def _slugify_target(value: str) -> str:
@@ -40,9 +34,13 @@ def _dashboard_targets_from_config(config: dict) -> list[str]:
     return [str(item) for item in fallback if not people or str(item) in people]
 
 
-async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_entities, discovery_info=None) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up Family DEFCON button entities from a config entry."""
     config_data = hass.data[DOMAIN]["config"]
-    target_buttons = hass.data[DOMAIN].setdefault("target_button_entities", {})
     entities = [
         DashboardConfirmButton(hass),
         DashboardLaunchButton(hass),
@@ -57,41 +55,13 @@ async def async_setup_platform(hass: HomeAssistant, config: dict, async_add_enti
     ]
 
     for target in _dashboard_targets_from_config(config_data):
-        button = DashboardSelectTargetButton(hass, target)
-        target_buttons[button.target_slug] = button
-        entities.append(button)
+        entities.append(DashboardSelectTargetButton(hass, target))
 
-    async_add_entities(entities, True)
-
-    def _sync_target_buttons() -> None:
-        """Add or refresh dynamic target buttons after config/options reloads."""
-        target_buttons = hass.data[DOMAIN].setdefault("target_button_entities", {})
-        new_entities: list[DashboardSelectTargetButton] = []
-
-        for target in _dashboard_targets_from_config(hass.data[DOMAIN]["config"]):
-            target_name = str(target)
-            target_slug = _slugify_target(target_name)
-            existing = target_buttons.get(target_slug)
-
-            if existing is not None:
-                existing.update_target_name(target_name)
-                existing.async_write_ha_state()
-                continue
-
-            button = DashboardSelectTargetButton(hass, target_name)
-            target_buttons[target_slug] = button
-            new_entities.append(button)
-
-        if new_entities:
-            async_add_entities(new_entities, True)
-
-    remove_listener = hass.data[DOMAIN].get("remove_target_button_sync_listener")
-    if remove_listener:
-        remove_listener()
-    hass.data[DOMAIN]["remove_target_button_sync_listener"] = async_dispatcher_connect(
-        hass,
-        SIGNAL_TARGET_BUTTONS_UPDATE,
-        _sync_target_buttons,
+    async_add_entry_entities(
+        entry,
+        async_add_entities,
+        entities,
+        update_before_add=True,
     )
 
 
@@ -200,12 +170,6 @@ class DashboardSelectTargetButton(BaseDashboardButton):
         self._attr_unique_id = object_id
         self._attr_suggested_object_id = object_id
         self._attr_icon = "mdi:account-crosshairs"
-
-    def update_target_name(self, target_name: str) -> None:
-        """Refresh display metadata when a target is renamed but keeps the same slug."""
-        self.target_name = str(target_name)
-        self.target_slug = _slugify_target(self.target_name)
-        self._attr_name = self.target_name
 
     @property
     def extra_state_attributes(self) -> dict:

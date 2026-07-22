@@ -1,12 +1,5 @@
 {
   "name": "Family DEFCON",
-  "render_readme": true,
-  "zip_release": true,
-  "filename": "family_defcon_v1_1_5.zip",
   "homeassistant": "2024.6.0",
-  "hacs": "2.0.0",
-  "domains": [
-    "family_defcon"
-  ],
-  "iot_class": "local_polling"
+  "hacs": "2.0.0"
 }

@@ -16,14 +16,14 @@ import aiohttp
 import voluptuous as vol
 import yaml
 
-from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.components import persistent_notification
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import yaml as yaml_util
@@ -35,13 +35,19 @@ from .const import (
     DEFAULT_PARENTS,
     STORAGE_KEY,
     STORAGE_VERSION,
-    SIGNAL_TARGET_BUTTONS_UPDATE,
     SIGNAL_UPDATE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 CONFIG_PATH = "family_defcon.yaml"
-PLATFORMS = ["sensor", "switch", "binary_sensor", "text", "select", "button"]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.BINARY_SENSOR,
+    Platform.TEXT,
+    Platform.SELECT,
+    Platform.BUTTON,
+]
 
 LAUNCH_SCHEMA = vol.Schema({
     vol.Required("launcher"): cv.string,
@@ -152,7 +158,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry,
         data=data,
         options=options,
-        version=4,
+        unique_id=entry.unique_id or DOMAIN,
+        version=5,
         minor_version=0,
     )
     _LOGGER.info("Family DEFCON config entry migration complete.")
@@ -160,7 +167,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Family DEFCON from a UI config entry."""
+    """Set up Family DEFCON from a config entry."""
     config_file = entry.data.get("config_file", CONFIG_PATH)
 
     hass.data.setdefault(DOMAIN, {})
@@ -168,41 +175,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["config_path"] = config_file
 
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
-        """Apply UI option changes to the active config when possible.
-
-        Existing config values, PIN hashes, AdGuard client names, targets, penalties,
-        station settings, and generated dashboard target buttons are refreshed through
-        the idempotent setup/reload path.
-        """
-        hass.data.setdefault(DOMAIN, {})["config_entry"] = updated_entry
-        if hass.data[DOMAIN].get("setup_complete"):
-            _LOGGER.info("Family DEFCON options updated. Re-running setup to apply services, active config, and generated target buttons.")
-            await async_setup(hass, {})
-            persistent_notification.async_create(
-                hass,
-                "Family DEFCON settings were saved. Active config was reloaded and generated dashboard target buttons were refreshed.",
-                title="Family DEFCON settings updated",
-                notification_id="family_defcon_options_updated",
-            )
+        """Reload the config entry after options are saved."""
+        _LOGGER.info("Family DEFCON options updated; reloading the config entry")
+        await hass.config_entries.async_reload(updated_entry.entry_id)
 
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 
-    # Always run async_setup after a config entry load/reload. async_setup is idempotent below:
-    # services are re-registered safely, timers are replaced, and platforms are loaded once.
-    result = await async_setup(hass, {})
-    if result:
-        hass.data[DOMAIN]["setup_complete"] = True
-    return result
+    await _async_setup_runtime(hass)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload Family DEFCON config entry.
+    """Unload a Family DEFCON config entry."""
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
 
-    This integration still uses legacy platform setup for entities, so a full HA
-    restart remains the cleanest way to remove all entities. We do remove the
-    periodic timer, generated-button sync listener, and mark setup incomplete to
-    avoid background work after unload.
-    """
     domain_data = hass.data.get(DOMAIN, {})
     remove_interval = domain_data.get("remove_interval")
     if remove_interval:
@@ -211,29 +199,38 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.exception("Family DEFCON failed to remove periodic timer during unload")
         domain_data["remove_interval"] = None
-    remove_target_button_sync_listener = domain_data.get("remove_target_button_sync_listener")
-    if remove_target_button_sync_listener:
+    for service_name in domain_data.get("registered_services", set()):
         try:
-            remove_target_button_sync_listener()
+            if hass.services.has_service(DOMAIN, service_name):
+                hass.services.async_remove(DOMAIN, service_name)
         except Exception:
-            _LOGGER.exception("Family DEFCON failed to remove target button sync listener during unload")
-        domain_data["remove_target_button_sync_listener"] = None
-    domain_data["setup_complete"] = False
+            _LOGGER.exception(
+                "Family DEFCON failed to remove service %s during unload",
+                service_name,
+            )
+
+    hass.data.pop(DOMAIN, None)
     return True
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up Family DEFCON."""
+    """Set up the Family DEFCON integration domain."""
+    hass.data.setdefault(DOMAIN, {})
+    return True
+
+
+async def _async_setup_runtime(hass: HomeAssistant) -> None:
+    """Initialize the runtime owned by the active config entry."""
     hass.data.setdefault(DOMAIN, {})
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
 
     async def load_yaml(filename: str) -> dict:
         """Load a YAML file without blocking Home Assistant's event loop."""
         path = Path(hass.config.path(filename))
-        if not path.exists():
-            return {}
 
         def _read_yaml() -> dict:
+            if not path.exists():
+                return {}
             loaded = yaml.safe_load(path.read_text()) or {}
             return loaded if isinstance(loaded, dict) else {}
 
@@ -1636,30 +1633,12 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         await log_event("Enforcement reapplied.")
 
     async def handle_reload_config(call: ServiceCall) -> None:
-        secrets_cache.clear()
-        hass.data[DOMAIN]["config"] = apply_options_overrides(normalize_config(await load_yaml(hass.data.get(DOMAIN, {}).get("config_path", CONFIG_PATH))))
-
-        # Keep runtime state aligned with the active people list.
-        active_people = list(conf().get("people", []))
-        normalize_blocked_until_state()
-        st()["adguard_applied"] = {person: st().get("adguard_applied", {}).get(person, False) for person in active_people}
-
-        targets = dashboard_targets()
-        if st().get("dashboard_target") not in targets:
-            dash = dashboard_config()
-            default_target = str(dash.get("default_target", "")) if isinstance(dash, dict) else ""
-            st()["dashboard_target"] = default_target if default_target in targets else (targets[0] if targets else "")
-
-        st()["dashboard_pin"] = ""
-        st()["parent_admin_pin"] = ""
-        st()["parent_admin_verified_until"] = None
-        st()["parent_admin_verified_by"] = ""
-        st()["dashboard_confirm"] = False
-
         entry = hass.data.get(DOMAIN, {}).get("config_entry")
-        opts = dict(getattr(entry, "options", {}) or {})
-        async_dispatcher_send(hass, SIGNAL_TARGET_BUTTONS_UPDATE)
-        await log_event("Config reloaded. Source: " + ("UI options" if bool(opts.get("use_ui_config", False)) else "YAML") + ". Generated dashboard target buttons refreshed.")
+        if entry is None:
+            _LOGGER.error("Family DEFCON cannot reload because no config entry is active")
+            return
+
+        await hass.config_entries.async_reload(entry.entry_id)
 
     async def handle_block_person(call: ServiceCall) -> None:
         person = call.data["person"]
@@ -2257,6 +2236,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             hass.services.async_register(DOMAIN, service_name, handler)
         else:
             hass.services.async_register(DOMAIN, service_name, handler, schema=schema)
+        hass.data[DOMAIN].setdefault("registered_services", set()).add(service_name)
 
     safe_register_service("parent_admin_keypress", handle_parent_admin_keypress, schema=DASHBOARD_KEYPRESS_SCHEMA)
     safe_register_service("parent_admin_backspace", handle_parent_admin_backspace)
@@ -2331,16 +2311,4 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
     ensure_dashboard_defaults()
 
-    if not hass.data[DOMAIN].get("platforms_loaded"):
-        for platform in PLATFORMS:
-            try:
-                await async_load_platform(hass, platform, DOMAIN, {}, config)
-            except Exception:
-                _LOGGER.exception("Family DEFCON failed to load %s platform", platform)
-        hass.data[DOMAIN]["platforms_loaded"] = True
-    else:
-        _LOGGER.info("Family DEFCON platforms already loaded; skipped duplicate platform load.")
-        async_dispatcher_send(hass, SIGNAL_TARGET_BUTTONS_UPDATE)
-
-    hass.data[DOMAIN]["setup_complete"] = True
-    return True
+    _LOGGER.info("Family DEFCON runtime initialized")

@@ -2,9 +2,13 @@
 
 ## Unreleased
 
-- Refreshed generated dashboard target buttons after options/config reloads.
-- Added newly configured or renamed target buttons without requiring a clean Home Assistant startup.
-- Kept stale renamed-away target buttons unavailable until cleanup/restart, matching the legacy platform limits.
+- Modernized all entity platforms to use Home Assistant config-entry setup and unload.
+- Reloaded the complete config entry after options or YAML configuration changes.
+- Added newly configured or renamed people, sensors, selects, and target buttons without requiring a Home Assistant restart.
+- Grouped entities under a Family DEFCON device in the device registry.
+- Added redacted downloadable diagnostics for safer beta debugging.
+- Simplified HACS metadata so HACS installs directly from the integration directory without a version-specific ZIP asset.
+- Added automated HACS and Hassfest validation for pushes and pull requests.
 
 ## v1.1.5
 

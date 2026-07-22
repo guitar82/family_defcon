@@ -1,12 +1,13 @@
 {
   "domain": "family_defcon",
   "name": "Family DEFCON",
-  "codeowners": [],
+  "codeowners": ["@guitar82"],
   "config_flow": true,
   "documentation": "https://github.com/guitar82/family_defcon",
-  "integration_type": "hub",
+  "integration_type": "service",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/guitar82/family_defcon/issues",
   "requirements": [],
-  "version": "1.1.5",
-  "issue_tracker": "https://github.com/guitar82/family_defcon/issues"
+  "single_config_entry": true,
+  "version": "2.0.0b1"
 }
